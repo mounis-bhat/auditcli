@@ -1,8 +1,6 @@
 # AuditCLI
 
-A robust CLI tool that runs Lighthouse audits, fetches CrUX field data, and generates AI-powered insights. Features comprehensive input validation, graceful error handling, configurable timeouts, and performance profiling. Returns everything as structured JSON for easy integration.
-
-**Current Status**: Phase 1 Complete ✅ - Foundation reliability and performance optimizations implemented. Ready for server-side integration.
+A robust, production-ready CLI tool that runs comprehensive web audits using Lighthouse, fetches real-world performance data from CrUX, and generates AI-powered insights. Features automatic caching, comprehensive input validation, graceful error handling, configurable timeouts, and detailed performance profiling. Returns everything as structured JSON for easy integration with CI/CD pipelines and monitoring systems.
 
 ## Installation
 
@@ -260,19 +258,14 @@ AI-generated analysis including:
 
 ## Features
 
-### ✅ Phase 1: Foundation (Implemented)
-- **Enhanced Error Handling**: Custom exceptions, retry logic with exponential backoff, graceful degradation
-- **Input Validation**: Comprehensive URL and API key validation with `--validate-only` pre-flight checks
-- **Performance Optimization**: Configurable timeouts (`--timeout` flag), subprocess timeout handling, performance profiling
-
-### ✅ Phase 2: Scalability & Security (Partially Implemented)
-- **SQLite Caching**: ✅ Reduce redundant API calls with configurable TTL caching
-- **Security Hardening**: Environment variable enforcement, output sanitization
-- **Testing Expansion**: Unit tests, integration tests, error scenario coverage
-
-### 🔮 Phase 3: Integration & Validation
-- **Documentation Updates**: Comprehensive docs for production deployment
-- **SvelteKit Integration**: Seamless server-side integration examples
+- **Comprehensive Auditing**: Lighthouse performance, accessibility, SEO, and best practices scores
+- **Real-World Data**: Chrome User Experience Report (CrUX) field data integration
+- **AI-Powered Insights**: Gemini AI analysis with actionable recommendations
+- **Automatic Caching**: SQLite-based caching with configurable TTL to reduce API costs
+- **Input Validation**: Pre-flight validation with `--validate-only` flag
+- **Error Resilience**: Retry logic, graceful degradation, structured error responses
+- **Performance Monitoring**: Built-in timing and profiling for bottleneck identification
+- **Production Ready**: Configurable timeouts, environment variable validation, no crashes
 
 ## Integration
 
@@ -288,9 +281,10 @@ uv run python -m pytest tests/ -v
 uv run auditcli --validate-only https://example.com
 uv run auditcli --validate-only invalid-url
 
-# Test timeout functionality
+# Test timeout and caching functionality
 uv run auditcli --timeout 30 --validate-only https://example.com  # Fast validation
 uv run auditcli --timeout 1200 https://example.com                # Extended timeout
+uv run auditcli --no-cache https://example.com                    # Skip cache
 
 # Run a test audit
 uv run auditcli https://mounis.net | jq '.status'
