@@ -7,7 +7,14 @@ from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 
+from src.errors import APIError
 from src.models import (
     AIReport,
     CrUXData,
@@ -119,18 +126,26 @@ def _build_ai_input(
     }
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type(APIError),
+)
 def generate_ai_report(
-    url: str, lighthouse: LighthouseReport, crux: Optional[CrUXData]
+    url: str,
+    lighthouse: LighthouseReport,
+    crux: Optional[CrUXData],
+    timeout: float = 300.0,
 ) -> Optional[AIReport]:
     """
     Generate AI analysis report using Gemini.
-    Returns None if API key missing or generation fails.
+    Returns None if generation fails gracefully, raises APIError on API failures.
     """
     load_dotenv()
 
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        return None  # No API key, return None (not an error)
+        raise APIError("GOOGLE_API_KEY environment variable not set")
 
     input_data = _build_ai_input(url, lighthouse, crux)
 
@@ -152,10 +167,12 @@ def generate_ai_report(
         )
 
         if not response.text:
-            return None
+            raise APIError("AI API returned empty response")
 
         parsed = json.loads(response.text)
         return AIReport.model_validate(parsed)
 
-    except Exception:
-        return None  # Generation failed, return None
+    except APIError:
+        raise
+    except Exception as e:
+        raise APIError(f"Failed to generate AI report: {str(e)}") from e

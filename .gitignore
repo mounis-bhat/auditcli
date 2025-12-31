@@ -14,3 +14,6 @@ wheels/
 .ruff_cache/
 
 .env
+
+# Db files
+*.db

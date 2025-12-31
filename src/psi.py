@@ -5,7 +5,14 @@ from typing import Any, Callable, Dict, Optional, cast
 
 import httpx
 from dotenv import load_dotenv
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 
+from src.errors import APIError
 from src.models import CrUXData, CrUXMetric, MetricDistribution, Rating
 
 PSI_API_URL = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
@@ -90,16 +97,21 @@ def _parse_overall_rating(category: Optional[str]) -> Optional[Rating]:
     return category_map.get(category)
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type(APIError),
+)
 def fetch_crux(url: str, timeout: float = 60.0) -> Optional[CrUXData]:
     """
     Fetch CrUX field data from PageSpeed Insights API.
-    Returns None if API key missing or no field data available.
+    Returns None if no field data available, raises APIError on API failures.
     """
     load_dotenv()
 
     api_key = os.environ.get("PSI_API_KEY")
     if not api_key:
-        return None  # No API key, return None (not an error)
+        raise APIError("PSI_API_KEY environment variable not set")
 
     params = {
         "url": url,
@@ -113,19 +125,19 @@ def fetch_crux(url: str, timeout: float = 60.0) -> Optional[CrUXData]:
             response = client.get(PSI_API_URL, params=params)
             response.raise_for_status()
             data = response.json()
-    except Exception:
-        return None  # API error, return None
+    except Exception as e:
+        raise APIError(f"Failed to fetch CrUX data: {str(e)}") from e
 
     # Try URL-specific data first, then origin fallback
     loading_exp = data.get("loadingExperience") or data.get("originLoadingExperience")
     if not loading_exp:
-        return None
+        return None  # No data available, not an error
 
     is_origin_fallback = data.get("loadingExperience") is None
     metrics_data = loading_exp.get("metrics", {})
 
     if not metrics_data:
-        return None
+        return None  # No metrics data, not an error
 
     return CrUXData(
         lcp=_parse_metric(metrics_data, "LARGEST_CONTENTFUL_PAINT_MS", _rate_lcp),

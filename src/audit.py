@@ -1,12 +1,19 @@
 """Main audit orchestration."""
 
+import time
+from typing import Optional, List, Dict
+
 from src.ai import generate_ai_report
+from src.cache import get_cached_result, store_result
+from src.errors import APIError, AuditError
 from src.lighthouse import run_lighthouse
-from src.models import AuditResponse, Insights, LighthouseReport, Status
+from src.models import AuditResponse, CrUXData, Insights, LighthouseReport, Status
 from src.psi import fetch_crux
 
 
-def run_audit(url: str) -> AuditResponse:
+def run_audit(
+    url: str, timeout: float = 600.0, no_cache: bool = False
+) -> AuditResponse:
     """
     Run a complete web audit for the given URL.
 
@@ -16,28 +23,83 @@ def run_audit(url: str) -> AuditResponse:
     - AI analysis
 
     Returns structured response with status indicating success/partial/failed.
+    Implements graceful degradation for partial failures.
+
+    Args:
+        url: The URL to audit
+        timeout: Total timeout for the audit in seconds (default: 600 = 10 minutes)
+        no_cache: If True, skip cache check and don't store results (default: False)
     """
-    # Run Lighthouse
-    lighthouse: LighthouseReport = run_lighthouse(url)
+    # Check cache first (unless disabled)
+    if not no_cache:
+        cached_result = get_cached_result(url)
+        if cached_result:
+            # Return cached result directly
+            return AuditResponse.model_validate(cached_result)
 
-    # Check if Lighthouse completely failed
-    lighthouse_failed = lighthouse.mobile is None and lighthouse.desktop is None
+    lighthouse: Optional[LighthouseReport] = None
+    crux: Optional[CrUXData] = None
+    ai_report = None
+    error_messages: List[str] = []
+    timing: Dict[str, float] = {}
 
-    if lighthouse_failed:
+    # Run Lighthouse (critical component)
+    lighthouse_start = time.time()
+    try:
+        lighthouse = run_lighthouse(url, timeout=timeout)
+        timing["lighthouse"] = time.time() - lighthouse_start
+    except AuditError as e:
+        error_messages.append(str(e))
         return AuditResponse(
             status=Status.FAILED,
             url=url,
-            lighthouse=lighthouse,
+            lighthouse=LighthouseReport(mobile=None, desktop=None),
             crux=None,
-            insights=Insights(metrics=lighthouse, ai_report=None),
-            error="Lighthouse failed to run for both mobile and desktop",
+            insights=Insights(
+                metrics=LighthouseReport(mobile=None, desktop=None), ai_report=None
+            ),
+            error=str(e),
+        )
+    except Exception as e:
+        error_messages.append(f"Lighthouse error: {str(e)}")
+        return AuditResponse(
+            status=Status.FAILED,
+            url=url,
+            lighthouse=LighthouseReport(mobile=None, desktop=None),
+            crux=None,
+            insights=Insights(
+                metrics=LighthouseReport(mobile=None, desktop=None), ai_report=None
+            ),
+            error=f"Lighthouse failed: {str(e)}",
         )
 
-    # Fetch CrUX data
-    crux = fetch_crux(url)
+    # Fetch CrUX data (optional, graceful degradation)
+    crux_start = time.time()
+    try:
+        crux = fetch_crux(url, timeout=timeout)
+        timing["crux"] = time.time() - crux_start
+    except APIError as e:
+        timing["crux"] = time.time() - crux_start
+        error_messages.append(f"CrUX: {str(e)}")
+        crux = None  # Graceful degradation
+    except Exception as e:
+        timing["crux"] = time.time() - crux_start
+        error_messages.append(f"CrUX unexpected error: {str(e)}")
+        crux = None
 
-    # Generate AI report
-    ai_report = generate_ai_report(url, lighthouse, crux)
+    # Generate AI report (optional, graceful degradation)
+    ai_start = time.time()
+    try:
+        ai_report = generate_ai_report(url, lighthouse, crux, timeout=timeout)
+        timing["ai"] = time.time() - ai_start
+    except APIError as e:
+        timing["ai"] = time.time() - ai_start
+        error_messages.append(f"AI: {str(e)}")
+        ai_report = None  # Graceful degradation
+    except Exception as e:
+        timing["ai"] = time.time() - ai_start
+        error_messages.append(f"AI unexpected error: {str(e)}")
+        ai_report = None
 
     # Determine status
     # - SUCCESS: Everything worked
@@ -50,11 +112,24 @@ def run_audit(url: str) -> AuditResponse:
     )
 
     status = Status.SUCCESS if all_succeeded else Status.PARTIAL
+    error = "; ".join(error_messages) if error_messages else None
 
-    return AuditResponse(
+    result = AuditResponse(
         status=status,
         url=url,
         lighthouse=lighthouse,
         crux=crux,
         insights=Insights(metrics=lighthouse, ai_report=ai_report),
+        error=error,
+        timing=timing,
     )
+
+    # Cache successful results (unless disabled)
+    if not no_cache and (status == Status.SUCCESS or status == Status.PARTIAL):
+        try:
+            store_result(url, result.model_dump())
+        except Exception:
+            # Caching failure shouldn't break the audit
+            pass
+
+    return result

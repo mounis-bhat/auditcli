@@ -1,7 +1,7 @@
 """All models for the simplified audit CLI."""
 
 from enum import Enum
-from typing import Optional
+from typing import Dict, Optional
 
 from pydantic import BaseModel
 
@@ -186,3 +186,4 @@ class AuditResponse(BaseModel):
     crux: Optional[CrUXData] = None
     insights: Insights
     error: Optional[str] = None
+    timing: Optional[Dict[str, float]] = None  # Performance profiling data
