@@ -18,6 +18,8 @@ This guide covers integrating the `auditcli` tool into a SvelteKit application.
 ```env
 # .env
 AUDITCLI_PATH=/path/to/web-audit-ai  # Path to auditcli project
+RATE_LIMIT_WINDOW_MS=900000          # 15 minutes
+RATE_LIMIT_MAX_REQUESTS=10           # Max 10 audits per window per IP
 ```
 
 ---
@@ -244,7 +246,139 @@ export const POST: RequestHandler = async ({ request }) => {
 
 ---
 
-## 5. Client-Side Store
+## 5. Batch Audits (Queue Implementation)
+
+For handling multiple URLs, implement a queue system to process audits sequentially (one at a time) to avoid overloading the server.
+
+Create a new API endpoint for batch processing:
+
+```typescript
+// src/routes/api/audit/batch/+server.ts
+
+import { json, error } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
+import { runAudit, isValidUrl } from '$lib/server/audit.service';
+
+interface BatchRequest {
+  urls: string[];
+}
+
+interface BatchResponse {
+  results: Array<{
+    url: string;
+    success: boolean;
+    data?: any;
+    error?: string;
+  }>;
+}
+
+export const POST: RequestHandler = async ({ request }) => {
+  const body: BatchRequest = await request.json();
+  const { urls } = body;
+
+  if (!urls || !Array.isArray(urls)) {
+    throw error(400, { message: 'URLs array is required' });
+  }
+
+  if (urls.length > 10) {
+    throw error(400, { message: 'Maximum 10 URLs per batch' });
+  }
+
+  const results: BatchResponse['results'] = [];
+
+  for (const url of urls) {
+    if (!isValidUrl(url)) {
+      results.push({ url, success: false, error: 'Invalid URL format' });
+      continue;
+    }
+
+    try {
+      const data = await runAudit(url);
+      results.push({ url, success: true, data });
+    } catch (err: any) {
+      results.push({ url, success: false, error: err.message });
+    }
+  }
+
+  return json({ results });
+};
+```
+
+This processes URLs one by one sequentially. For more advanced queuing, consider using a job queue library.
+
+---
+
+## 6. Rate Limiting
+
+Implement custom rate limiting to prevent abuse and ensure fair usage. This simple in-memory implementation tracks requests per IP.
+
+```typescript
+// src/lib/rate-limit.ts
+
+interface RateLimitEntry {
+  count: number;
+  resetTime: number;
+}
+
+const rateLimitMap = new Map<string, RateLimitEntry>();
+
+export function checkRateLimit(ip: string): { allowed: boolean; resetTime?: number } {
+  const now = Date.now();
+  const windowMs = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'); // 15 minutes
+  const maxRequests = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '10');
+
+  const entry = rateLimitMap.get(ip);
+
+  if (!entry || now > entry.resetTime) {
+    // First request or window expired
+    rateLimitMap.set(ip, { count: 1, resetTime: now + windowMs });
+    return { allowed: true };
+  }
+
+  if (entry.count >= maxRequests) {
+    return { allowed: false, resetTime: entry.resetTime };
+  }
+
+  entry.count++;
+  return { allowed: true };
+}
+```
+
+Add to hooks for global rate limiting:
+
+```typescript
+// src/hooks.server.ts
+
+import type { Handle } from '@sveltejs/kit';
+import { checkRateLimit } from '$lib/rate-limit';
+
+export const handle: Handle = async ({ event, resolve }) => {
+  const ip = event.getClientAddress();
+  const rateLimit = checkRateLimit(ip);
+
+  if (!rateLimit.allowed) {
+    return new Response(
+      JSON.stringify({
+        error: 'Too many audit requests from this IP, please try again later.',
+        resetTime: new Date(rateLimit.resetTime!).toISOString(),
+      }),
+      {
+        status: 429,
+        headers: {
+          'Content-Type': 'application/json',
+          'Retry-After': Math.ceil((rateLimit.resetTime! - Date.now()) / 1000).toString(),
+        },
+      }
+    );
+  }
+
+  return resolve(event);
+};
+```
+
+---
+
+## 8. Client-Side Store
 
 ```typescript
 // src/lib/stores/audit.store.ts
@@ -323,7 +457,7 @@ export const aiReport = derived(
 
 ---
 
-## 6. UI Components
+## 9. UI Components
 
 ### Audit Form
 
@@ -440,14 +574,16 @@ export const aiReport = derived(
 
 ---
 
-## 7. File Structure
+## 10. File Structure
 
 ```
 src/
+├── hooks.server.ts
 ├── lib/
 │   ├── components/
 │   │   ├── AuditForm.svelte
 │   │   └── ScoreBadge.svelte
+│   ├── rate-limit.ts
 │   ├── server/
 │   │   └── audit.service.ts
 │   ├── stores/
@@ -457,20 +593,24 @@ src/
 └── routes/
     ├── api/
     │   └── audit/
-    │       └── +server.ts
+    │       ├── +server.ts
+    │       └── batch/
+    │           └── +server.ts
     └── audit/
         └── +page.svelte
 ```
 
 ---
 
-## Quick Start Checklist
+## 11. Quick Start Checklist
 
 - [ ] Copy type definitions to `src/lib/types/audit.ts`
 - [ ] Create audit service at `src/lib/server/audit.service.ts`
 - [ ] Create API endpoint at `src/routes/api/audit/+server.ts`
+- [ ] Create batch audit endpoint at `src/routes/api/audit/batch/+server.ts`
+- [ ] Implement rate limiting in `src/lib/rate-limit.ts` and `src/hooks.server.ts`
 - [ ] Create store at `src/lib/stores/audit.store.ts`
 - [ ] Create UI components
-- [ ] Set `AUDITCLI_PATH` in `.env`
+- [ ] Set `AUDITCLI_PATH`, `RATE_LIMIT_WINDOW_MS`, and `RATE_LIMIT_MAX_REQUESTS` in `.env`
 - [ ] Set `GOOGLE_API_KEY` and `PSI_API_KEY` in the auditcli `.env`
 - [ ] Test: `uv run auditcli https://mounis.net | jq '.status'`
