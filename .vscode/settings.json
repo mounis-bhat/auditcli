@@ -1,0 +1,14 @@
+{
+  "cSpell.words": [
+    "auditcli",
+    "dotenv",
+    "pycache",
+    "pydantic",
+    "pytest",
+    "setuptools",
+    "ttfb",
+    "typer",
+    "venv"
+  ],
+  "python.analysis.typeCheckingMode": "strict"
+}

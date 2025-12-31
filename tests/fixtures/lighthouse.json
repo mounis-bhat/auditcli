@@ -1,0 +1,60 @@
+{
+  "categories": {
+    "performance": { "score": 0.85 },
+    "accessibility": { "score": 0.92 },
+    "best-practices": { "score": 0.88 },
+    "seo": { "score": 0.95 }
+  },
+  "audits": {
+    "largest-contentful-paint": {
+      "id": "largest-contentful-paint",
+      "title": "Largest Contentful Paint",
+      "description": "Largest Contentful Paint marks the time at which the largest text or image is painted.",
+      "numericValue": 2500,
+      "score": 0.7
+    },
+    "cumulative-layout-shift": {
+      "id": "cumulative-layout-shift",
+      "title": "Cumulative Layout Shift",
+      "description": "Cumulative Layout Shift measures the movement of visible elements within the viewport.",
+      "numericValue": 0.08,
+      "score": 0.9
+    },
+    "interaction-to-next-paint": {
+      "id": "interaction-to-next-paint",
+      "title": "Interaction to Next Paint",
+      "description": "Interaction to Next Paint measures page responsiveness.",
+      "numericValue": 180,
+      "score": 0.8
+    },
+    "total-blocking-time": {
+      "id": "total-blocking-time",
+      "title": "Total Blocking Time",
+      "description": "Sum of all time periods between FCP and Time to Interactive.",
+      "numericValue": 250,
+      "score": 0.75
+    },
+    "render-blocking-resources": {
+      "id": "render-blocking-resources",
+      "title": "Eliminate render-blocking resources",
+      "description": "Resources are blocking the first paint of your page.",
+      "numericValue": 500,
+      "score": 0.6,
+      "details": {
+        "type": "opportunity",
+        "overallSavingsMs": 500
+      }
+    },
+    "uses-optimized-images": {
+      "id": "uses-optimized-images",
+      "title": "Efficiently encode images",
+      "description": "Optimized images load faster and consume less cellular data.",
+      "numericValue": 300,
+      "score": 0.7,
+      "details": {
+        "type": "opportunity",
+        "overallSavingsMs": 300
+      }
+    }
+  }
+}
