@@ -8,8 +8,9 @@ import sys
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
+
 from src.audit import run_audit
-from src.errors import AuditError, APIError, ValidationError
+from src.errors import APIError, AuditError, ValidationError
 
 
 def validate_url(url: str) -> str:

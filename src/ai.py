@@ -2,16 +2,16 @@
 
 import json
 import os
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
 
 from src.errors import APIError

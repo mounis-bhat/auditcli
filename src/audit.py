@@ -1,7 +1,7 @@
 """Main audit orchestration."""
 
 import time
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional
 
 from src.ai import generate_ai_report
 from src.cache import get_cached_result, store_result

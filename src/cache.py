@@ -10,7 +10,6 @@ from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
 
-
 # Load environment variables
 load_dotenv()
 CACHE_DB_PATH = Path("audit_cache.db")
