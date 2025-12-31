@@ -5,9 +5,20 @@ This guide covers integrating the `auditcli` tool into a SvelteKit application.
 ## Prerequisites
 
 - Node.js 18+
-- SvelteKit project
+- SvelteKit 2+ with Svelte 5 (uses runes)
 - Python 3.13+ with `uv` installed on the server
 - `auditcli` installed and accessible via `uv run auditcli`
+
+## Key Features
+
+- **Comprehensive Auditing**: Lighthouse performance, accessibility, SEO, and best practices scores
+- **Real-World Data**: Chrome User Experience Report (CrUX) field data integration
+- **AI-Powered Insights**: Gemini AI analysis with actionable recommendations
+- **Automatic Caching**: SQLite-based caching with configurable TTL to reduce API costs
+- **Input Validation**: Pre-flight validation with `--validate-only` flag
+- **Error Resilience**: Retry logic, graceful degradation, structured error responses
+- **Performance Monitoring**: Built-in timing and profiling for bottleneck identification
+- **Production Ready**: Configurable timeouts, environment variable validation, no crashes
 
 ---
 
@@ -17,9 +28,9 @@ This guide covers integrating the `auditcli` tool into a SvelteKit application.
 
 ```env
 # .env
-AUDITCLI_PATH=/path/to/web-audit-ai  # Path to auditcli project
-RATE_LIMIT_WINDOW_MS=900000          # 15 minutes
-RATE_LIMIT_MAX_REQUESTS=10           # Max 10 audits per window per IP
+AUDITCLI_PATH=/home/mounis/Development/personal/auditcli  # Path to auditcli project
+RATE_LIMIT_WINDOW_MS=900000                               # 15 minutes
+RATE_LIMIT_MAX_REQUESTS=10                                # Max 10 audits per window per IP
 ```
 
 ---
@@ -41,6 +52,7 @@ export interface AuditResponse {
   crux: CrUXData | null;
   insights: Insights;
   error?: string;
+  timing?: Record<string, number>;
 }
 
 export interface LighthouseReport {
@@ -160,6 +172,8 @@ export interface AIRecommendation {
 
 Create a service to execute the CLI and parse results.
 
+**Note**: The auditcli automatically caches results for 24 hours (configurable via `CACHE_TTL_SECONDS`). Use `noCache: true` to force fresh audits, or `timeout` to set custom timeouts in seconds.
+
 ```typescript
 // src/lib/server/audit.service.ts
 
@@ -169,13 +183,23 @@ import type { AuditResponse } from '$lib/types/audit';
 
 const execAsync = promisify(exec);
 
-export async function runAudit(url: string): Promise<AuditResponse> {
-  const command = `uv run auditcli ${url}`;
+export async function runAudit(url: string, options?: { noCache?: boolean; timeout?: number }): Promise<AuditResponse> {
+  let command = `uv run auditcli`;
+
+  if (options?.noCache) {
+    command += ` --no-cache`;
+  }
+
+  if (options?.timeout) {
+    command += ` --timeout ${options.timeout}`;
+  }
+
+  command += ` ${url}`;
 
   try {
     const { stdout } = await execAsync(command, {
       cwd: process.env.AUDITCLI_PATH || process.cwd(),
-      timeout: 300000, // 5 minute timeout
+      timeout: (options?.timeout || 600) * 1000 + 60000, // CLI timeout + 1 minute buffer
       maxBuffer: 10 * 1024 * 1024, // 10MB buffer
     });
 
@@ -224,7 +248,7 @@ import { runAudit, isValidUrl } from '$lib/server/audit.service';
 
 export const POST: RequestHandler = async ({ request }) => {
   const body = await request.json();
-  const { url } = body;
+  const { url, noCache = false, timeout } = body;
 
   if (!url || typeof url !== 'string') {
     throw error(400, { message: 'URL is required' });
@@ -234,7 +258,12 @@ export const POST: RequestHandler = async ({ request }) => {
     throw error(400, { message: 'Invalid URL format' });
   }
 
-  const result = await runAudit(url);
+  const options = {
+    noCache: Boolean(noCache),
+    ...(timeout && typeof timeout === 'number' && { timeout })
+  };
+
+  const result = await runAudit(url, options);
 
   if (result.status === 'failed') {
     throw error(500, { message: result.error || 'Audit failed' });
@@ -378,81 +407,57 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 ---
 
-## 8. Client-Side Store
+## 8. Client-Side State (Svelte 5 Runes)
 
 ```typescript
-// src/lib/stores/audit.store.ts
+// src/lib/stores/audit.svelte.ts
 
-import { writable, derived } from 'svelte/store';
 import type { AuditResponse } from '$lib/types/audit';
 
-interface AuditState {
-  loading: boolean;
-  error: string | null;
-  response: AuditResponse | null;
-}
+class AuditState {
+  loading = $state(false);
+  error = $state<string | null>(null);
+  response = $state<AuditResponse | null>(null);
 
-function createAuditStore() {
-  const { subscribe, set, update } = writable<AuditState>({
-    loading: false,
-    error: null,
-    response: null,
-  });
+  // Derived state
+  lighthouse = $derived(this.response?.lighthouse ?? null);
+  crux = $derived(this.response?.crux ?? null);
+  aiReport = $derived(this.response?.insights.ai_report ?? null);
 
-  return {
-    subscribe,
+  async runAudit(url: string, options?: { noCache?: boolean; timeout?: number }) {
+    this.loading = true;
+    this.error = null;
 
-    async runAudit(url: string) {
-      update((state) => ({ ...state, loading: true, error: null }));
+    try {
+      const res = await fetch('/api/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, ...options }),
+      });
 
-      try {
-        const res = await fetch('/api/audit', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url }),
-        });
-
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.message || 'Audit failed');
-        }
-
-        const response: AuditResponse = await res.json();
-        update((state) => ({ ...state, loading: false, response }));
-        return response;
-      } catch (error: any) {
-        update((state) => ({
-          ...state,
-          loading: false,
-          error: error.message,
-        }));
-        throw error;
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Audit failed');
       }
-    },
 
-    reset() {
-      set({ loading: false, error: null, response: null });
-    },
-  };
+      this.response = await res.json();
+      return this.response;
+    } catch (error: any) {
+      this.error = error.message;
+      throw error;
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  reset() {
+    this.loading = false;
+    this.error = null;
+    this.response = null;
+  }
 }
 
-export const auditStore = createAuditStore();
-
-// Derived stores
-export const lighthouse = derived(
-  auditStore,
-  ($store) => $store.response?.lighthouse ?? null
-);
-
-export const crux = derived(
-  auditStore,
-  ($store) => $store.response?.crux ?? null
-);
-
-export const aiReport = derived(
-  auditStore,
-  ($store) => $store.response?.insights.ai_report ?? null
-);
+export const auditState = new AuditState();
 ```
 
 ---
@@ -464,33 +469,57 @@ export const aiReport = derived(
 ```svelte
 <!-- src/lib/components/AuditForm.svelte -->
 <script lang="ts">
-  import { auditStore } from '$lib/stores/audit.store';
+  import { auditState } from '$lib/stores/audit.svelte';
 
-  let url = '';
+  let url = $state('');
+  let noCache = $state(false);
+  let customTimeout = $state('');
 
-  $: loading = $auditStore.loading;
-  $: error = $auditStore.error;
-
-  async function handleSubmit() {
+  async function handleSubmit(e: SubmitEvent) {
+    e.preventDefault();
     if (!url) return;
-    await auditStore.runAudit(url);
+
+    const options: { noCache?: boolean; timeout?: number } = {};
+
+    if (noCache) options.noCache = true;
+    if (customTimeout) options.timeout = parseInt(customTimeout);
+
+    await auditState.runAudit(url, Object.keys(options).length > 0 ? options : undefined);
   }
 </script>
 
-<form on:submit|preventDefault={handleSubmit}>
+<form onsubmit={handleSubmit}>
   <input
     type="url"
     bind:value={url}
     placeholder="https://example.com"
     required
-    disabled={loading}
+    disabled={auditState.loading}
   />
-  <button type="submit" disabled={loading || !url}>
-    {loading ? 'Auditing...' : 'Run Audit'}
+
+  <label>
+    <input type="checkbox" bind:checked={noCache} disabled={auditState.loading} />
+    Skip cache (force fresh audit)
+  </label>
+
+  <label>
+    Timeout (seconds, default: 600):
+    <input
+      type="number"
+      bind:value={customTimeout}
+      placeholder="600"
+      min="30"
+      max="3600"
+      disabled={auditState.loading}
+    />
+  </label>
+
+  <button type="submit" disabled={auditState.loading || !url}>
+    {auditState.loading ? 'Auditing...' : 'Run Audit'}
   </button>
 
-  {#if error}
-    <p class="error">{error}</p>
+  {#if auditState.error}
+    <p class="error">{auditState.error}</p>
   {/if}
 </form>
 ```
@@ -500,11 +529,15 @@ export const aiReport = derived(
 ```svelte
 <!-- src/lib/components/ScoreBadge.svelte -->
 <script lang="ts">
-  export let score: number;
-  export let label: string;
+  interface Props {
+    score: number;
+    label: string;
+  }
 
-  $: displayScore = Math.round(score * 100);
-  $: rating = displayScore >= 90 ? 'good' : displayScore >= 50 ? 'needs-improvement' : 'poor';
+  let { score, label }: Props = $props();
+
+  let displayScore = $derived(Math.round(score * 100));
+  let rating = $derived(displayScore >= 90 ? 'good' : displayScore >= 50 ? 'needs-improvement' : 'poor');
 </script>
 
 <div class="score-badge {rating}">
@@ -535,37 +568,34 @@ export const aiReport = derived(
 ```svelte
 <!-- src/routes/audit/+page.svelte -->
 <script lang="ts">
-  import { auditStore, lighthouse, crux, aiReport } from '$lib/stores/audit.store';
+  import { auditState } from '$lib/stores/audit.svelte';
   import AuditForm from '$lib/components/AuditForm.svelte';
   import ScoreBadge from '$lib/components/ScoreBadge.svelte';
-
-  $: loading = $auditStore.loading;
-  $: response = $auditStore.response;
 </script>
 
 <main>
   <h1>Website Audit</h1>
   <AuditForm />
 
-  {#if loading}
+  {#if auditState.loading}
     <p>Running audit... (this may take a few minutes)</p>
   {/if}
 
-  {#if response && $lighthouse?.mobile}
+  {#if auditState.response && auditState.lighthouse?.mobile}
     <section>
       <h2>Mobile Scores</h2>
       <div class="scores">
-        <ScoreBadge score={$lighthouse.mobile.categories.performance} label="Performance" />
-        <ScoreBadge score={$lighthouse.mobile.categories.accessibility} label="Accessibility" />
-        <ScoreBadge score={$lighthouse.mobile.categories.best_practices} label="Best Practices" />
-        <ScoreBadge score={$lighthouse.mobile.categories.seo} label="SEO" />
+        <ScoreBadge score={auditState.lighthouse.mobile.categories.performance} label="Performance" />
+        <ScoreBadge score={auditState.lighthouse.mobile.categories.accessibility} label="Accessibility" />
+        <ScoreBadge score={auditState.lighthouse.mobile.categories.best_practices} label="Best Practices" />
+        <ScoreBadge score={auditState.lighthouse.mobile.categories.seo} label="SEO" />
       </div>
     </section>
 
-    {#if $aiReport}
+    {#if auditState.aiReport}
       <section>
         <h2>AI Analysis</h2>
-        <p>{$aiReport.executive_summary}</p>
+        <p>{auditState.aiReport.executive_summary}</p>
       </section>
     {/if}
   {/if}
@@ -587,7 +617,7 @@ src/
 │   ├── server/
 │   │   └── audit.service.ts
 │   ├── stores/
-│   │   └── audit.store.ts
+│   │   └── audit.svelte.ts
 │   └── types/
 │       └── audit.ts
 └── routes/
@@ -609,8 +639,10 @@ src/
 - [ ] Create API endpoint at `src/routes/api/audit/+server.ts`
 - [ ] Create batch audit endpoint at `src/routes/api/audit/batch/+server.ts`
 - [ ] Implement rate limiting in `src/lib/rate-limit.ts` and `src/hooks.server.ts`
-- [ ] Create store at `src/lib/stores/audit.store.ts`
+- [ ] Create state module at `src/lib/stores/audit.svelte.ts`
 - [ ] Create UI components
 - [ ] Set `AUDITCLI_PATH`, `RATE_LIMIT_WINDOW_MS`, and `RATE_LIMIT_MAX_REQUESTS` in `.env`
-- [ ] Set `GOOGLE_API_KEY` and `PSI_API_KEY` in the auditcli `.env`
+- [ ] Set `GOOGLE_API_KEY`, `PSI_API_KEY`, and optionally `CACHE_TTL_SECONDS` in the auditcli `.env`
 - [ ] Test: `uv run auditcli https://mounis.net | jq '.status'`
+- [ ] Test caching: `uv run auditcli --no-cache https://mounis.net` (skip cache)
+- [ ] Test validation: `uv run auditcli --validate-only https://example.com`
