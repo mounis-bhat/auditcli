@@ -1,12 +1,13 @@
 """Lighthouse runner - runs mobile and desktop audits."""
 
 import json
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional
 
-from src.errors import AuditError
+from src.errors import AuditError, LighthouseNotFoundError
 from src.models import (
     CategoryScores,
     CoreWebVitals,
@@ -16,14 +17,23 @@ from src.models import (
 )
 
 
+def _safe_float(value: Any) -> Optional[float]:
+    """Safely convert value to float or None."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
 def _get_audit_value(
     audits: Dict[str, Any], audit_id: str, key: str = "numericValue"
 ) -> Optional[float]:
-    """Extract a value from Lighthouse audits."""
+    """Extract a numeric value from Lighthouse audits."""
     audit = audits.get(audit_id)
     if not audit:
         return None
-    return cast(Optional[float], audit.get(key))
+    return _safe_float(audit.get(key))
 
 
 def _extract_metrics(lh_json: Dict[str, Any]) -> LighthouseMetrics:
@@ -54,11 +64,9 @@ def _extract_metrics(lh_json: Dict[str, Any]) -> LighthouseMetrics:
         opportunities.append(
             Opportunity(
                 id=audit_id,
-                title=cast(str, audit.get("title", "")),
-                description=cast(str, audit.get("description", "")),
-                estimated_savings_ms=cast(
-                    Optional[float], details.get("overallSavingsMs")
-                ),
+                title=str(audit.get("title", "")),
+                description=str(audit.get("description", "")),
+                estimated_savings_ms=_safe_float(details.get("overallSavingsMs")),
             )
         )
 
@@ -69,10 +77,30 @@ def _extract_metrics(lh_json: Dict[str, Any]) -> LighthouseMetrics:
     )
 
 
+def _check_lighthouse_available() -> None:
+    """
+    Check if Lighthouse CLI is available in PATH.
+
+    Raises:
+        LighthouseNotFoundError: If lighthouse is not installed or not in PATH.
+    """
+    if shutil.which("lighthouse") is None:
+        raise LighthouseNotFoundError(
+            "Lighthouse CLI not found in PATH. "
+            "Install it with: npm install -g lighthouse"
+        )
+
+
 def _run_single_lighthouse(
     url: str, preset: str, output_path: Path, timeout: float
 ) -> None:
-    """Run a single Lighthouse audit."""
+    """
+    Run a single Lighthouse audit.
+
+    Raises:
+        subprocess.TimeoutExpired: If the audit times out.
+        RuntimeError: If lighthouse returns a non-zero exit code.
+    """
     if preset == "mobile":
         command = [
             "lighthouse",
@@ -108,13 +136,21 @@ def _run_single_lighthouse(
 def run_lighthouse(url: str, timeout: float = 600.0) -> LighthouseReport:
     """
     Run Lighthouse for mobile and desktop.
+
     Returns extracted metrics (not full raw JSON).
     Raises AuditError if both mobile and desktop audits fail.
 
     Args:
         url: The URL to audit
         timeout: Total timeout for both audits in seconds (default: 600)
+
+    Raises:
+        LighthouseNotFoundError: If lighthouse CLI is not installed.
+        AuditError: If both mobile and desktop audits fail.
     """
+    # Check lighthouse is available before starting
+    _check_lighthouse_available()
+
     mobile_metrics: Optional[LighthouseMetrics] = None
     desktop_metrics: Optional[LighthouseMetrics] = None
     mobile_error: Optional[str] = None
@@ -134,8 +170,18 @@ def run_lighthouse(url: str, timeout: float = 600.0) -> LighthouseReport:
             with open(mobile_path) as f:
                 mobile_json = json.load(f)
             mobile_metrics = _extract_metrics(mobile_json)
-        except Exception as e:
-            mobile_error = str(e)
+        except subprocess.TimeoutExpired as e:
+            mobile_error = f"Mobile audit timed out after {e.timeout}s"
+        except subprocess.CalledProcessError as e:
+            mobile_error = f"Lighthouse process failed: {e}"
+        except json.JSONDecodeError as e:
+            mobile_error = f"Failed to parse Lighthouse output: {e}"
+        except FileNotFoundError:
+            mobile_error = "Lighthouse output file not found"
+        except KeyError as e:
+            mobile_error = f"Missing expected key in Lighthouse output: {e}"
+        except OSError as e:
+            mobile_error = f"OS error running Lighthouse: {e}"
 
         # Run desktop audit
         try:
@@ -143,8 +189,18 @@ def run_lighthouse(url: str, timeout: float = 600.0) -> LighthouseReport:
             with open(desktop_path) as f:
                 desktop_json = json.load(f)
             desktop_metrics = _extract_metrics(desktop_json)
-        except Exception as e:
-            desktop_error = str(e)
+        except subprocess.TimeoutExpired as e:
+            desktop_error = f"Desktop audit timed out after {e.timeout}s"
+        except subprocess.CalledProcessError as e:
+            desktop_error = f"Lighthouse process failed: {e}"
+        except json.JSONDecodeError as e:
+            desktop_error = f"Failed to parse Lighthouse output: {e}"
+        except FileNotFoundError:
+            desktop_error = "Lighthouse output file not found"
+        except KeyError as e:
+            desktop_error = f"Missing expected key in Lighthouse output: {e}"
+        except OSError as e:
+            desktop_error = f"OS error running Lighthouse: {e}"
 
     # If both failed, raise an error
     if mobile_metrics is None and desktop_metrics is None:

@@ -2,18 +2,27 @@
 
 import hashlib
 import json
-import os
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from dotenv import load_dotenv
+from src.config import get_config
 
-# Load environment variables
-load_dotenv()
-CACHE_DB_PATH = Path("audit_cache.db")
-CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "86400"))  # Default 1 day
+# Thread-safe initialization flag
+_cache_initialized = False
+_cache_lock = threading.Lock()
+
+
+def _get_cache_path() -> Path:
+    """Get cache database path from config."""
+    return get_config().cache_db_path
+
+
+def _get_cache_ttl() -> int:
+    """Get cache TTL in seconds from config."""
+    return get_config().cache_ttl_seconds
 
 
 def _get_url_hash(url: str) -> str:
@@ -21,10 +30,13 @@ def _get_url_hash(url: str) -> str:
     return hashlib.sha256(url.encode()).hexdigest()
 
 
-def _init_cache_db() -> None:
+def _init_cache_db(db_path: Path) -> None:
     """Initialize the cache database with required schema."""
+    # Ensure parent directory exists
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
     try:
-        with sqlite3.connect(CACHE_DB_PATH) as conn:
+        with sqlite3.connect(db_path) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS cache (
                     url_hash TEXT PRIMARY KEY,
@@ -39,10 +51,10 @@ def _init_cache_db() -> None:
             conn.commit()
     except sqlite3.Error:
         # If database is corrupted, remove and recreate
-        if CACHE_DB_PATH.exists():
-            CACHE_DB_PATH.unlink()
+        if db_path.exists():
+            db_path.unlink()
         # Retry once
-        with sqlite3.connect(CACHE_DB_PATH) as conn:
+        with sqlite3.connect(db_path) as conn:
             conn.execute("""
                 CREATE TABLE cache (
                     url_hash TEXT PRIMARY KEY,
@@ -56,6 +68,27 @@ def _init_cache_db() -> None:
             conn.commit()
 
 
+def _ensure_cache_initialized() -> Path:
+    """
+    Initialize cache database once (thread-safe).
+
+    Returns the cache database path.
+    """
+    global _cache_initialized
+    db_path = _get_cache_path()
+
+    if _cache_initialized:
+        return db_path
+
+    with _cache_lock:
+        if _cache_initialized:  # Double-check after acquiring lock
+            return db_path
+        _init_cache_db(db_path)
+        _cache_initialized = True
+
+    return db_path
+
+
 def get_cached_result(url: str) -> Optional[Dict[str, Any]]:
     """
     Get cached audit result for URL if it exists and hasn't expired.
@@ -63,11 +96,11 @@ def get_cached_result(url: str) -> Optional[Dict[str, Any]]:
     Returns the result dict if valid cache exists, None otherwise.
     """
     try:
-        _init_cache_db()
+        db_path = _ensure_cache_initialized()
         url_hash = _get_url_hash(url)
         current_time = time.time()
 
-        with sqlite3.connect(CACHE_DB_PATH) as conn:
+        with sqlite3.connect(db_path) as conn:
             cursor = conn.execute(
                 """
                 SELECT result_json, created_at, ttl_seconds
@@ -99,13 +132,14 @@ def store_result(url: str, result: Dict[str, Any]) -> None:
         result: The audit result dict
     """
     try:
-        _init_cache_db()
+        db_path = _ensure_cache_initialized()
         url_hash = _get_url_hash(url)
         current_time = time.time()
+        ttl_seconds = _get_cache_ttl()
 
         result_json = json.dumps(result)
 
-        with sqlite3.connect(CACHE_DB_PATH) as conn:
+        with sqlite3.connect(db_path) as conn:
             # Use INSERT OR REPLACE to handle updates
             conn.execute(
                 """
@@ -113,7 +147,7 @@ def store_result(url: str, result: Dict[str, Any]) -> None:
                 (url_hash, normalized_url, result_json, created_at, ttl_seconds)
                 VALUES (?, ?, ?, ?, ?)
             """,
-                (url_hash, url, result_json, current_time, CACHE_TTL_SECONDS),
+                (url_hash, url, result_json, current_time, ttl_seconds),
             )
             conn.commit()
     except (sqlite3.Error, json.JSONDecodeError):
@@ -124,19 +158,60 @@ def store_result(url: str, result: Dict[str, Any]) -> None:
 def clear_cache() -> None:
     """Clear all cached results."""
     try:
-        if CACHE_DB_PATH.exists():
-            CACHE_DB_PATH.unlink()
-    except Exception:
+        db_path = _get_cache_path()
+        if db_path.exists():
+            db_path.unlink()
+        # Reset initialization flag so DB is recreated on next use
+        global _cache_initialized
+        with _cache_lock:
+            _cache_initialized = False
+    except OSError:
         pass
+
+
+def cleanup_expired() -> int:
+    """
+    Remove expired entries from cache.
+
+    Returns:
+        Count of removed entries.
+    """
+    try:
+        db_path = _ensure_cache_initialized()
+        current_time = time.time()
+
+        with sqlite3.connect(db_path) as conn:
+            # First count how many will be deleted
+            cursor = conn.execute(
+                """
+                SELECT COUNT(*) FROM cache
+                WHERE (? - created_at) >= ttl_seconds
+                """,
+                (current_time,),
+            )
+            count = cursor.fetchone()[0]
+
+            # Then delete them
+            conn.execute(
+                """
+                DELETE FROM cache
+                WHERE (? - created_at) >= ttl_seconds
+                """,
+                (current_time,),
+            )
+            conn.commit()
+            return count
+    except sqlite3.Error:
+        return 0
 
 
 def get_cache_stats() -> Dict[str, Any]:
     """Get cache statistics."""
     try:
-        _init_cache_db()
+        db_path = _ensure_cache_initialized()
         current_time = time.time()
 
-        with sqlite3.connect(CACHE_DB_PATH) as conn:
+        with sqlite3.connect(db_path) as conn:
             # Count total entries
             cursor = conn.execute("SELECT COUNT(*) FROM cache")
             total_entries = cursor.fetchone()[0]
@@ -152,14 +227,15 @@ def get_cache_stats() -> Dict[str, Any]:
             valid_entries = cursor.fetchone()[0]
 
             # Get database size
-            db_size = CACHE_DB_PATH.stat().st_size if CACHE_DB_PATH.exists() else 0
+            db_size = db_path.stat().st_size if db_path.exists() else 0
 
         return {
             "total_entries": total_entries,
             "valid_entries": valid_entries,
             "expired_entries": total_entries - valid_entries,
             "db_size_bytes": db_size,
-            "ttl_seconds": CACHE_TTL_SECONDS,
+            "db_path": str(db_path),
+            "ttl_seconds": _get_cache_ttl(),
         }
     except Exception:
         return {
@@ -167,5 +243,13 @@ def get_cache_stats() -> Dict[str, Any]:
             "valid_entries": 0,
             "expired_entries": 0,
             "db_size_bytes": 0,
-            "ttl_seconds": CACHE_TTL_SECONDS,
+            "db_path": str(_get_cache_path()),
+            "ttl_seconds": _get_cache_ttl(),
         }
+
+
+def reset_cache_state() -> None:
+    """Reset cache initialization state (useful for testing)."""
+    global _cache_initialized
+    with _cache_lock:
+        _cache_initialized = False

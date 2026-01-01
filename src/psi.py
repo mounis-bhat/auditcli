@@ -1,10 +1,8 @@
 """PSI/CrUX fetcher - fetches real user metrics from PageSpeed Insights."""
 
-import os
-from typing import Any, Callable, Dict, Optional, cast
+from typing import Any, Callable, Dict, List, Optional, cast
 
 import httpx
-from dotenv import load_dotenv
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -12,6 +10,7 @@ from tenacity import (
     wait_exponential,
 )
 
+from src.config import get_config
 from src.errors import APIError
 from src.models import CrUXData, CrUXMetric, MetricDistribution, Rating
 
@@ -45,19 +44,36 @@ def _rate_inp(inp_ms: float) -> Rating:
     return Rating.POOR
 
 
+# === Type-safe helpers ===
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    """Safely convert value to float or None."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
 # === Parsing Functions ===
 
 
 def _parse_distribution(data: Dict[str, Any]) -> Optional[MetricDistribution]:
     """Parse distribution buckets from PSI response."""
-    distributions = cast(list[Dict[str, Any]], data.get("distributions", []))
-    if not distributions or len(distributions) < 3:
+    raw_distributions = data.get("distributions")
+    if raw_distributions is None:
+        return None
+
+    # Cast to typed list for proper type inference
+    distributions = cast(List[Dict[str, Any]], raw_distributions)
+    if len(distributions) < 3:
         return None
 
     return MetricDistribution(
-        good=distributions[0].get("proportion", 0),
-        needs_improvement=distributions[1].get("proportion", 0),
-        poor=distributions[2].get("proportion", 0),
+        good=float(distributions[0].get("proportion", 0)),
+        needs_improvement=float(distributions[1].get("proportion", 0)),
+        poor=float(distributions[2].get("proportion", 0)),
     )
 
 
@@ -71,7 +87,8 @@ def _parse_metric(
     if not metric_data:
         return None
 
-    p75 = cast(Optional[float], metric_data.get("percentile"))
+    p75_raw = metric_data.get("percentile")
+    p75 = _safe_float(p75_raw)
     distribution = _parse_distribution(metric_data)
 
     rating = None
@@ -89,12 +106,35 @@ def _parse_overall_rating(category: Optional[str]) -> Optional[Rating]:
     """Parse overall category to rating."""
     if not category:
         return None
-    category_map = {
+    category_map: Dict[str, Rating] = {
         "FAST": Rating.GOOD,
         "AVERAGE": Rating.NEEDS_IMPROVEMENT,
         "SLOW": Rating.POOR,
     }
     return category_map.get(category)
+
+
+def _get_loading_experience(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Get loading experience data, preferring URL-specific over origin fallback.
+
+    Returns None if no loading experience data is available.
+    """
+    # Try URL-specific data first
+    loading_exp = data.get("loadingExperience")
+    if loading_exp and isinstance(loading_exp, dict):
+        loading_exp_typed = cast(Dict[str, Any], loading_exp)
+        if loading_exp_typed.get("metrics"):
+            return loading_exp_typed
+
+    # Fall back to origin data
+    origin_exp = data.get("originLoadingExperience")
+    if origin_exp and isinstance(origin_exp, dict):
+        origin_exp_typed = cast(Dict[str, Any], origin_exp)
+        if origin_exp_typed.get("metrics"):
+            return origin_exp_typed
+
+    return None
 
 
 @retry(
@@ -105,17 +145,14 @@ def _parse_overall_rating(category: Optional[str]) -> Optional[Rating]:
 def fetch_crux(url: str, timeout: float = 60.0) -> Optional[CrUXData]:
     """
     Fetch CrUX field data from PageSpeed Insights API.
+
     Returns None if no field data available, raises APIError on API failures.
     """
-    load_dotenv()
+    config = get_config()
 
-    api_key = os.environ.get("PSI_API_KEY")
-    if not api_key:
-        raise APIError("PSI_API_KEY environment variable not set")
-
-    params = {
+    params: Dict[str, str] = {
         "url": url,
-        "key": api_key,
+        "key": config.psi_api_key,
         "strategy": "mobile",
         "category": "performance",
     }
@@ -125,16 +162,24 @@ def fetch_crux(url: str, timeout: float = 60.0) -> Optional[CrUXData]:
             response = client.get(PSI_API_URL, params=params)
             response.raise_for_status()
             data = response.json()
+    except httpx.TimeoutException as e:
+        raise APIError(f"PSI API request timed out: {e}") from e
+    except httpx.HTTPStatusError as e:
+        raise APIError(f"PSI API returned error status {e.response.status_code}") from e
+    except httpx.RequestError as e:
+        raise APIError(f"Failed to connect to PSI API: {e}") from e
     except Exception as e:
-        raise APIError(f"Failed to fetch CrUX data: {str(e)}") from e
+        raise APIError(f"Failed to fetch CrUX data: {e}") from e
 
-    # Try URL-specific data first, then origin fallback
-    loading_exp = data.get("loadingExperience") or data.get("originLoadingExperience")
+    # Get loading experience data
+    loading_exp = _get_loading_experience(data)
     if not loading_exp:
         return None  # No data available, not an error
 
-    is_origin_fallback = data.get("loadingExperience") is None
-    metrics_data = loading_exp.get("metrics", {})
+    is_origin_fallback = data.get("loadingExperience") is None or not data.get(
+        "loadingExperience", {}
+    ).get("metrics")
+    metrics_data: Dict[str, Any] = loading_exp.get("metrics", {})
 
     if not metrics_data:
         return None  # No metrics data, not an error

@@ -2,15 +2,13 @@
 
 import argparse
 import json
-import os
 import re
 import sys
 from urllib.parse import urlparse
 
-from dotenv import load_dotenv
-
 from src.audit import run_audit
-from src.errors import APIError, AuditError, ValidationError
+from src.config import get_config
+from src.errors import APIError, AuditError, LighthouseNotFoundError, ValidationError
 
 
 def validate_url(url: str) -> str:
@@ -46,47 +44,32 @@ def validate_url(url: str) -> str:
     if "." not in parsed.netloc or " " in parsed.netloc:
         raise ValidationError("URL domain appears to be invalid")
 
+    # Extract hostname without port for validation
+    hostname = parsed.netloc.split(":")[0] if ":" in parsed.netloc else parsed.netloc
+
+    # Validate port if present
+    if ":" in parsed.netloc:
+        port_str = parsed.netloc.split(":")[-1]
+        try:
+            port = int(port_str)
+            if not (1 <= port <= 65535):
+                raise ValidationError(f"Port {port} is out of valid range (1-65535)")
+        except ValueError:
+            raise ValidationError(f"Invalid port: {port_str}")
+
     # Check for localhost/IP addresses (basic validation)
-    if parsed.netloc in ("localhost", "127.0.0.1", "0.0.0.0"):
+    if hostname in ("localhost", "127.0.0.1", "0.0.0.0"):
         # Allow localhost for development
         pass
     else:
         # Basic check that it looks like a domain (not just IP without validation)
-        if re.match(r"^\d+\.\d+\.\d+\.\d+$", parsed.netloc):
+        if re.match(r"^\d+\.\d+\.\d+\.\d+$", hostname):
             # It's an IP address, basic validation
             pass
-        elif not re.match(r"^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", parsed.netloc):
+        elif not re.match(r"^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", hostname):
             raise ValidationError("URL domain format appears invalid")
 
     return url
-
-
-def validate_api_keys() -> None:
-    """
-    Validate required API keys on startup.
-    Raises ValidationError if keys are missing or malformed.
-    """
-    # Check PSI API key
-    psi_key = os.getenv("PSI_API_KEY")
-    if not psi_key or not psi_key.strip():
-        raise ValidationError(
-            "PSI_API_KEY environment variable is required and must be non-empty"
-        )
-
-    # Basic format validation (should be reasonably long API key)
-    if len(psi_key.strip()) < 10:
-        raise ValidationError("PSI_API_KEY appears to be too short or malformed")
-
-    # Check Google API key
-    google_key = os.getenv("GOOGLE_API_KEY")
-    if not google_key or not google_key.strip():
-        raise ValidationError(
-            "GOOGLE_API_KEY environment variable is required and must be non-empty"
-        )
-
-    # Basic format validation (should be reasonably long API key)
-    if len(google_key.strip()) < 10:
-        raise ValidationError("GOOGLE_API_KEY appears to be too short or malformed")
 
 
 def main() -> None:
@@ -113,11 +96,11 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
-        # Load environment variables from .env file
-        load_dotenv()
-
-        # Validate API keys on startup
-        validate_api_keys()
+        # Validate configuration (loads .env and checks required keys)
+        try:
+            get_config()
+        except ValueError as e:
+            raise ValidationError(str(e))
 
         if args.validate_only:
             # Pre-flight validation only
@@ -150,6 +133,16 @@ def main() -> None:
                 {
                     "status": "failed",
                     "error": f"Validation error: {str(e)}",
+                }
+            )
+        )
+        sys.exit(1)
+    except LighthouseNotFoundError as e:
+        print(
+            json.dumps(
+                {
+                    "status": "failed",
+                    "error": str(e),
                 }
             )
         )

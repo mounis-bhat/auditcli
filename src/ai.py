@@ -1,10 +1,8 @@
 """AI report generation using Gemini."""
 
 import json
-import os
 from typing import Any, Dict, Optional
 
-from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from tenacity import (
@@ -14,6 +12,7 @@ from tenacity import (
     wait_exponential,
 )
 
+from src.config import get_config
 from src.errors import APIError
 from src.models import (
     AIReport,
@@ -141,11 +140,8 @@ def generate_ai_report(
     Generate AI analysis report using Gemini.
     Returns None if generation fails gracefully, raises APIError on API failures.
     """
-    load_dotenv()
-
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        raise APIError("GOOGLE_API_KEY environment variable not set")
+    config = get_config()
+    api_key = config.google_api_key
 
     input_data = _build_ai_input(url, lighthouse, crux)
 

@@ -17,3 +17,9 @@ class ValidationError(AuditError):
     """Exception for input validation failures."""
 
     pass
+
+
+class LighthouseNotFoundError(AuditError):
+    """Raised when Lighthouse CLI is not found in PATH."""
+
+    pass
