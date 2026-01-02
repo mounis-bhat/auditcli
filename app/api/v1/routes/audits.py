@@ -1,7 +1,7 @@
 """Audit endpoints."""
 
 import asyncio
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Query
 
 from app.api.v1.deps import get_job_store
 from app.core.audit import run_audit
@@ -13,6 +13,7 @@ from app.schemas.job import (
     JobProgress,
     JobStatusResponse,
     JobStatus,
+    PaginatedJobIds,
 )
 from app.services.jobs import JobStore
 from app.services.validators import validate_url
@@ -136,4 +137,30 @@ async def get_audit_status(
         result=result,
         error=job.error,
         created_at=job.created_at,
+    )
+
+
+@router.get("/audits/running", response_model=PaginatedJobIds)
+async def get_running_audits(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(10, ge=1, le=100),
+    job_store: JobStore = Depends(get_job_store),
+) -> PaginatedJobIds:
+    """
+    Get a paginated list of job IDs for all running audits.
+
+    Running audits include jobs with status PENDING or RUNNING.
+    """
+    running_jobs = [
+        job.id
+        for job in job_store.jobs.values()
+        if job.status in [JobStatus.PENDING, JobStatus.RUNNING]
+    ]
+    total = len(running_jobs)
+    start = (page - 1) * per_page
+    end = start + per_page
+    items = running_jobs[start:end]
+    has_next = end < total
+    return PaginatedJobIds(
+        items=items, total=total, page=page, per_page=per_page, has_next=has_next
     )

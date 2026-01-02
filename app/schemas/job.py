@@ -26,3 +26,11 @@ class JobStatusResponse(BaseModel):
     result: Optional[AuditResponse] = None  # Full AuditResponse when complete
     error: Optional[str] = None
     created_at: datetime
+
+
+class PaginatedJobIds(BaseModel):
+    items: List[str]
+    total: int
+    page: int
+    per_page: int
+    has_next: bool
