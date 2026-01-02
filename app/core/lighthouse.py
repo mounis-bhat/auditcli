@@ -133,6 +133,55 @@ def _run_single_lighthouse(
         raise RuntimeError(f"Lighthouse failed ({preset}):\n{result.stderr}")
 
 
+def run_lighthouse_single(
+    url: str, strategy: str, timeout: float = 300.0
+) -> LighthouseMetrics:
+    """
+    Run Lighthouse for a single strategy (mobile or desktop).
+
+    Returns extracted metrics for the specified strategy.
+    Raises AuditError if the audit fails.
+
+    Args:
+        url: The URL to audit
+        strategy: "mobile" or "desktop"
+        timeout: Timeout for this single audit in seconds (default: 300)
+
+    Raises:
+        LighthouseNotFoundError: If lighthouse CLI is not installed.
+        AuditError: If the audit fails.
+    """
+    # Check lighthouse is available before starting
+    _check_lighthouse_available()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+        output_path = tmpdir_path / f"lighthouse-{strategy}.json"
+
+        # Run the audit
+        try:
+            _run_single_lighthouse(url, strategy, output_path, timeout)
+            with open(output_path) as f:
+                lh_json = json.load(f)
+            return _extract_metrics(lh_json)
+        except subprocess.TimeoutExpired as e:
+            raise AuditError(
+                f"{strategy.capitalize()} audit timed out after {e.timeout}s"
+            )
+        except subprocess.CalledProcessError as e:
+            raise AuditError(f"Lighthouse process failed ({strategy}): {e}")
+        except json.JSONDecodeError as e:
+            raise AuditError(f"Failed to parse Lighthouse output ({strategy}): {e}")
+        except FileNotFoundError:
+            raise AuditError(f"Lighthouse output file not found ({strategy})")
+        except KeyError as e:
+            raise AuditError(
+                f"Missing expected key in Lighthouse output ({strategy}): {e}"
+            )
+        except OSError as e:
+            raise AuditError(f"OS error running Lighthouse ({strategy}): {e}")
+
+
 def run_lighthouse(url: str, timeout: float = 600.0) -> LighthouseReport:
     """
     Run Lighthouse for mobile and desktop.

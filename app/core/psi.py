@@ -143,6 +143,64 @@ def _get_loading_experience(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     wait=wait_exponential(multiplier=1, min=4, max=10),
     retry=retry_if_exception_type(APIError),
 )
+async def fetch_crux_async(url: str, timeout: float = 60.0) -> Optional[CrUXData]:
+    """
+    Async version of fetch_crux - fetches CrUX field data from PageSpeed Insights API.
+
+    Returns None if no field data available, raises APIError on API failures.
+    """
+    config = get_config()
+
+    params: Dict[str, str] = {
+        "url": url,
+        "key": config.psi_api_key,
+        "strategy": "mobile",
+        "category": "performance",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(PSI_API_URL, params=params)
+            response.raise_for_status()
+            data = response.json()
+    except httpx.TimeoutException as e:
+        raise APIError(f"PSI API request timed out: {e}") from e
+    except httpx.HTTPStatusError as e:
+        raise APIError(f"PSI API returned error status {e.response.status_code}") from e
+    except httpx.RequestError as e:
+        raise APIError(f"Failed to connect to PSI API: {e}") from e
+    except Exception as e:
+        raise APIError(f"Failed to fetch CrUX data: {e}") from e
+
+    # Get loading experience data
+    loading_exp = _get_loading_experience(data)
+    if not loading_exp:
+        return None  # No data available, not an error
+
+    is_origin_fallback = data.get("loadingExperience") is None or not data.get(
+        "loadingExperience", {}
+    ).get("metrics")
+    metrics_data: Dict[str, Any] = loading_exp.get("metrics", {})
+
+    if not metrics_data:
+        return None  # No metrics data, not an error
+
+    return CrUXData(
+        lcp=_parse_metric(metrics_data, "LARGEST_CONTENTFUL_PAINT_MS", _rate_lcp),
+        cls=_parse_metric(metrics_data, "CUMULATIVE_LAYOUT_SHIFT_SCORE", _rate_cls),
+        inp=_parse_metric(metrics_data, "INTERACTION_TO_NEXT_PAINT", _rate_inp),
+        fcp=_parse_metric(metrics_data, "FIRST_CONTENTFUL_PAINT_MS"),
+        ttfb=_parse_metric(metrics_data, "EXPERIMENTAL_TIME_TO_FIRST_BYTE"),
+        origin_fallback=is_origin_fallback,
+        overall_rating=_parse_overall_rating(loading_exp.get("overall_category")),
+    )
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+    retry=retry_if_exception_type(APIError),
+)
 def fetch_crux(url: str, timeout: float = 60.0) -> Optional[CrUXData]:
     """
     Fetch CrUX field data from PageSpeed Insights API.
