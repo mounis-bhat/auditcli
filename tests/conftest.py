@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.models import (
+from app.schemas.audit import (
     CategoryScores,
     CoreWebVitals,
     LighthouseMetrics,

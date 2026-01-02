@@ -2,7 +2,7 @@
 
 import json
 
-from src.lighthouse import _extract_metrics  # type: ignore
+from app.core.lighthouse import _extract_metrics  # type: ignore
 
 
 def test_extract_metrics_from_fixture():

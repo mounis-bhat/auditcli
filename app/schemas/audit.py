@@ -1,27 +1,10 @@
-"""All models for the simplified audit CLI."""
+"""Audit-related Pydantic schemas."""
 
-from enum import Enum
 from typing import Dict, Optional
 
 from pydantic import BaseModel
 
-# === Enums ===
-
-
-class Status(str, Enum):
-    """Overall audit status."""
-
-    SUCCESS = "success"
-    PARTIAL = "partial"  # Some components failed
-    FAILED = "failed"
-
-
-class Rating(str, Enum):
-    """Performance rating for metrics."""
-
-    GOOD = "good"
-    NEEDS_IMPROVEMENT = "needs_improvement"
-    POOR = "poor"
+from app.schemas.common import Rating, Status
 
 
 # === Lighthouse Models ===
@@ -166,7 +149,7 @@ class AIReport(BaseModel):
     next_steps: list[str]
 
 
-# === Main Response Model ===
+# === Main Response Models ===
 
 
 class Insights(BaseModel):
@@ -177,7 +160,7 @@ class Insights(BaseModel):
 
 
 class AuditResponse(BaseModel):
-    """The main audit response returned by the CLI."""
+    """The main audit response returned by the API."""
 
     status: Status
     url: str
@@ -186,3 +169,14 @@ class AuditResponse(BaseModel):
     insights: Insights
     error: Optional[str] = None
     timing: Optional[Dict[str, float]] = None  # Performance profiling data
+
+
+# === Request Models ===
+
+
+class AuditRequest(BaseModel):
+    """Request model for audit endpoint."""
+
+    url: str
+    timeout: Optional[int] = 600
+    no_cache: Optional[bool] = False

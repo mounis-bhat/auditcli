@@ -1,4 +1,4 @@
-"""Custom exception classes for audit CLI."""
+"""Custom exception classes for audit application."""
 
 
 class AuditError(Exception):

@@ -3,12 +3,18 @@
 import time
 from typing import Dict, List, Optional
 
-from src.ai import generate_ai_report
-from src.cache import get_cached_result, store_result
-from src.errors import APIError, AuditError
-from src.lighthouse import run_lighthouse
-from src.models import AuditResponse, CrUXData, Insights, LighthouseReport, Status
-from src.psi import fetch_crux
+from app.core.ai import generate_ai_report
+from app.core.lighthouse import run_lighthouse
+from app.core.psi import fetch_crux
+from app.errors.exceptions import APIError, AuditError
+from app.schemas.audit import (
+    AuditResponse,
+    CrUXData,
+    Insights,
+    LighthouseReport,
+)
+from app.schemas.common import Status
+from app.services.cache import get_cached_result, store_result
 
 
 def run_audit(

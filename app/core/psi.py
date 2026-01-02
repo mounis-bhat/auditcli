@@ -10,9 +10,10 @@ from tenacity import (
     wait_exponential,
 )
 
-from src.config import get_config
-from src.errors import APIError
-from src.models import CrUXData, CrUXMetric, MetricDistribution, Rating
+from app.config.settings import get_config
+from app.errors.exceptions import APIError
+from app.schemas.audit import CrUXData, CrUXMetric, MetricDistribution
+from app.schemas.common import Rating
 
 PSI_API_URL = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
 

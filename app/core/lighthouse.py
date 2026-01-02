@@ -7,8 +7,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from src.errors import AuditError, LighthouseNotFoundError
-from src.models import (
+from app.errors.exceptions import AuditError, LighthouseNotFoundError
+from app.schemas.audit import (
     CategoryScores,
     CoreWebVitals,
     LighthouseMetrics,

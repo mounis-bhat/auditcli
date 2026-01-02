@@ -1,10 +1,12 @@
 [project]
 name = "auditcli"
 version = "0.1.0"
-description = "Simple web audit CLI - returns JSON with Lighthouse, CrUX, and AI insights"
+description = "Web audit API - FastAPI service with Lighthouse, CrUX, and AI insights"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
     "google-genai>=1.0.0",
     "httpx>=0.28.0",
     "pydantic>=2.12.5",
@@ -17,7 +19,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["app"]
 
 [tool.uv]
 package = true
@@ -25,7 +27,6 @@ package = true
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.28.0",
 ]
-
-[project.scripts]
-auditcli = "src.main:main"

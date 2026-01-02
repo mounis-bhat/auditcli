@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from src.config import get_config
+from app.config.settings import get_config
 
 # Thread-safe initialization flag
 _cache_initialized = False

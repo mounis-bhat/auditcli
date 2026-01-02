@@ -1,7 +1,8 @@
 """Tests for PSI/CrUX integration."""
 
-from src.models import CrUXData, CrUXMetric, MetricDistribution, Rating
-from src.psi import _parse_distribution, _parse_metric, _rate_lcp  # type: ignore
+from app.core.psi import _parse_distribution, _parse_metric, _rate_lcp  # type: ignore
+from app.schemas.audit import CrUXData, CrUXMetric, MetricDistribution
+from app.schemas.common import Rating
 
 
 class TestCrUXModels:

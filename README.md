@@ -31,6 +31,7 @@ Create a `.env` file:
 GOOGLE_API_KEY=your_gemini_key_here  # For AI insights
 PSI_API_KEY=your_psi_key_here        # For CrUX field data
 CACHE_TTL_SECONDS=86400              # Cache TTL in seconds (default: 86400 = 1 day)
+AUDIT_CACHE_PATH=./audit_cache.db    # Path to SQLite cache database (default: ./audit_cache.db)
 ```
 
 ### Getting API Keys
@@ -144,11 +145,11 @@ The tool outputs a single JSON object to stdout:
 
 ### Status Values
 
-| Status     | Description                                                     |
-| ---------- | --------------------------------------------------------------- |
-| `success`  | Everything worked (Lighthouse + CrUX + AI)                      |
-| `partial`  | Lighthouse worked but CrUX or AI failed (null for failed parts) |
-| `failed`   | Lighthouse failed or validation/API errors                      |
+| Status    | Description                                                     |
+| --------- | --------------------------------------------------------------- |
+| `success` | Everything worked (Lighthouse + CrUX + AI)                      |
+| `partial` | Lighthouse worked but CrUX or AI failed (null for failed parts) |
+| `failed`  | Lighthouse failed or validation/API errors                      |
 
 ### Performance Timing
 

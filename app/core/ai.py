@@ -12,9 +12,9 @@ from tenacity import (
     wait_exponential,
 )
 
-from src.config import get_config
-from src.errors import APIError
-from src.models import (
+from app.config.settings import get_config
+from app.errors.exceptions import APIError
+from app.schemas.audit import (
     AIReport,
     CrUXData,
     LighthouseReport,
