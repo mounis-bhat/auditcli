@@ -1,12 +1,11 @@
 """Main audit orchestration."""
 
-import asyncio
 import time
 from typing import Any, Callable, Dict, List, Optional
 
 from app.core.ai import generate_ai_report
 from app.core.lighthouse import run_lighthouse_single
-from app.core.psi import fetch_crux_async
+from app.core.psi import fetch_crux
 from app.errors.exceptions import APIError, AuditError
 from app.schemas.audit import (
     AuditResponse,
@@ -119,7 +118,7 @@ def run_audit(
         on_stage_start(AuditStage.CRUX)
     crux_start = time.time()
     try:
-        crux = asyncio.run(fetch_crux_async(url, timeout=timeout))
+        crux = fetch_crux(url, timeout=timeout)
         timing["crux"] = time.time() - crux_start
         if on_stage_complete:
             on_stage_complete(AuditStage.CRUX)

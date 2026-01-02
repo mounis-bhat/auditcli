@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 import uuid
 import threading
 
+from app.services.websocket import websocket_manager
+
 
 class JobStatus(str, Enum):
     PENDING = "pending"
@@ -49,6 +51,11 @@ class JobStore:
         self.ip_limits: Dict[str, set[str]] = {}  # IP -> set of active job_ids
         self.max_jobs_per_ip = 5
 
+    def _get_progress(self, job: Job) -> int:
+        """Calculate progress percentage based on completed stages."""
+        total_stages = 4  # LIGHTHOUSE_MOBILE, DESKTOP, CRUX, AI
+        return int((len(job.completed_stages) / total_stages) * 100)
+
     @classmethod
     def get_instance(cls) -> "JobStore":
         with cls._lock:
@@ -78,11 +85,20 @@ class JobStore:
             if job := self.jobs.get(job_id):
                 job.status = JobStatus.RUNNING
                 job.current_stage = stage
+                progress = self._get_progress(job)
+                websocket_manager.enqueue_broadcast(
+                    job_id, stage.value, progress, job.status.value
+                )
 
     def complete_stage(self, job_id: str, stage: AuditStage):
         with self._lock:
             if job := self.jobs.get(job_id):
                 job.completed_stages.append(stage)
+                progress = self._get_progress(job)
+                current_stage = job.current_stage.value if job.current_stage else ""
+                websocket_manager.enqueue_broadcast(
+                    job_id, current_stage, progress, job.status.value
+                )
 
     def complete_job(self, job_id: str, result: Dict[str, Any]):
         with self._lock:
@@ -90,6 +106,10 @@ class JobStore:
                 job.status = JobStatus.COMPLETED
                 job.result = result
                 job.current_stage = None
+                progress = 100
+                websocket_manager.enqueue_broadcast(
+                    job_id, "", progress, job.status.value
+                )
                 # Remove from IP tracking
                 for ip_jobs in self.ip_limits.values():
                     ip_jobs.discard(job_id)
@@ -100,6 +120,10 @@ class JobStore:
                 job.status = JobStatus.FAILED
                 job.error = error
                 job.current_stage = None
+                progress = self._get_progress(job)
+                websocket_manager.enqueue_broadcast(
+                    job_id, "", progress, job.status.value
+                )
                 # Remove from IP tracking
                 for ip_jobs in self.ip_limits.values():
                     ip_jobs.discard(job_id)
