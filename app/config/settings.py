@@ -26,6 +26,16 @@ class Config:
     # Timeouts
     default_timeout: float
 
+    # Concurrency controls
+    max_concurrent_audits: int
+    max_queue_size: int
+    queue_timeout_seconds: int
+
+    # Browser pool settings
+    browser_pool_size: int
+    browser_launch_timeout: int
+    browser_idle_timeout: int
+
 
 def _get_required_env(key: str) -> str:
     """Get required environment variable or raise."""
@@ -59,6 +69,14 @@ def load_config() -> Config:
         cache_db_path=cache_path,
         cache_ttl_seconds=int(_get_optional_env("CACHE_TTL_SECONDS", "86400")),
         default_timeout=float(_get_optional_env("AUDIT_TIMEOUT", "600")),
+        # Concurrency controls
+        max_concurrent_audits=int(_get_optional_env("MAX_CONCURRENT_AUDITS", "10")),
+        max_queue_size=int(_get_optional_env("MAX_QUEUE_SIZE", "50")),
+        queue_timeout_seconds=int(_get_optional_env("QUEUE_TIMEOUT_SECONDS", "300")),
+        # Browser pool settings
+        browser_pool_size=int(_get_optional_env("BROWSER_POOL_SIZE", "5")),
+        browser_launch_timeout=int(_get_optional_env("BROWSER_LAUNCH_TIMEOUT", "30")),
+        browser_idle_timeout=int(_get_optional_env("BROWSER_IDLE_TIMEOUT", "300")),
     )
 
 

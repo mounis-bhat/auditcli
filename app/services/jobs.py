@@ -12,6 +12,7 @@ from app.services.websocket import websocket_manager
 
 class JobStatus(str, Enum):
     PENDING = "pending"
+    QUEUED = "queued"  # Waiting in queue for a concurrency slot
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -40,6 +41,7 @@ class Job:
     result: Optional[Dict[str, Any]] = None  # Will hold AuditResponse dict
     error: Optional[str] = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    queue_position: Optional[int] = None  # Position in queue if status is QUEUED
 
 
 class JobStore:

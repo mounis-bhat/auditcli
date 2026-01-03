@@ -1,113 +1,250 @@
-"""Audit endpoints."""
+"""Audit endpoints with concurrency controls and queue management."""
+
+from __future__ import annotations
 
 import asyncio
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Query
+import logging
+from typing import Optional
 
-from app.api.v1.deps import get_job_store
-from app.core.audit import run_audit
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
+
+from app.api.v1.deps import get_job_store, get_concurrency_manager, get_browser_pool
+from app.core.audit import run_audit_async
 from app.errors.exceptions import ValidationError
 from app.schemas.audit import AuditRequest, AuditResponse
 from app.schemas.job import (
-    AuditStage,
     JobCreateResponse,
     JobProgress,
     JobStatusResponse,
-    JobStatus,
     PaginatedJobIds,
 )
-from app.services.jobs import JobStore
+from app.services.jobs import JobStore, JobStatus, AuditStage
+from app.services.concurrency import ConcurrencyManager
+from app.services.browser_pool import BrowserPool
 from app.services.validators import validate_url
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-async def run_audit_job(job_id: str, url: str, timeout: int, no_cache: bool):
-    """Background task to run the audit synchronously."""
-    job_store = get_job_store()
+async def run_audit_job(
+    job_id: str,
+    url: str,
+    timeout: int,
+    no_cache: bool,
+    job_store: JobStore,
+    concurrency_manager: ConcurrencyManager,
+    browser_pool: BrowserPool,
+) -> None:
+    """
+    Background task to run the audit with concurrency controls.
 
-    # Periodic cleanup of expired jobs
-    job_store.cleanup_expired()
-
-    def on_stage_start(stage: AuditStage):
-        job_store.update_stage(job_id, stage)
-
-    def on_stage_complete(stage: AuditStage):
-        job_store.complete_stage(job_id, stage)
-
+    After completing, processes the next job from the queue if available.
+    """
     try:
-        # Run sync audit in thread pool
-        result = await asyncio.to_thread(
-            run_audit,
+        # Define stage callbacks
+        def on_stage_start(stage: AuditStage) -> None:
+            job_store.update_stage(job_id, stage)
+
+        def on_stage_complete(stage: AuditStage) -> None:
+            job_store.complete_stage(job_id, stage)
+
+        # Run the audit using browser pool
+        result = await run_audit_async(
             url=url,
+            browser_pool=browser_pool,
             timeout=timeout,
             no_cache=no_cache,
             on_stage_start=on_stage_start,
             on_stage_complete=on_stage_complete,
         )
         job_store.complete_job(job_id, result)
+
     except Exception as e:
+        logger.exception(f"Audit job {job_id} failed: {e}")
         job_store.fail_job(job_id, str(e))
+
+    finally:
+        # Release concurrency slot
+        concurrency_manager.release()
+
+        # Process next job from queue
+        await process_next_queued_job(job_store, concurrency_manager, browser_pool)
+
+
+async def process_next_queued_job(
+    job_store: JobStore,
+    concurrency_manager: ConcurrencyManager,
+    browser_pool: BrowserPool,
+) -> None:
+    """Process the next job from the queue if there's capacity."""
+    # Try to acquire a slot
+    if not concurrency_manager.try_acquire():
+        return  # No capacity
+
+    # Get next job from queue
+    queued_job = concurrency_manager.queue.dequeue()
+    if queued_job is None:
+        # No jobs in queue, release the slot we just acquired
+        concurrency_manager.release()
+        return
+
+    # Update job status from QUEUED to RUNNING
+    job = job_store.get_job(queued_job.job_id)
+    if job is None:
+        # Job was removed/expired, release slot and try next
+        concurrency_manager.queue.remove(queued_job.job_id)
+        concurrency_manager.release()
+        await process_next_queued_job(job_store, concurrency_manager, browser_pool)
+        return
+
+    # Update status
+    with job_store._lock:
+        job.status = JobStatus.PENDING
+        job.queue_position = None
+
+    # Get options
+    options = queued_job.options
+    timeout = options.get("timeout", 600)
+    no_cache = options.get("no_cache", False)
+
+    # Start the audit in background
+    asyncio.create_task(
+        run_audit_job(
+            job_id=queued_job.job_id,
+            url=queued_job.url,
+            timeout=timeout,
+            no_cache=no_cache,
+            job_store=job_store,
+            concurrency_manager=concurrency_manager,
+            browser_pool=browser_pool,
+        )
+    )
+
+    # Remove from queue after starting
+    concurrency_manager.queue.remove(queued_job.job_id)
+    logger.info(f"Started queued job {queued_job.job_id} for {queued_job.url}")
 
 
 @router.post("/audit", response_model=JobCreateResponse)
 async def create_audit(
     request: AuditRequest,
-    background_tasks: BackgroundTasks,
     req: Request,
     job_store: JobStore = Depends(get_job_store),
+    concurrency_manager: ConcurrencyManager = Depends(get_concurrency_manager),
+    browser_pool: BrowserPool = Depends(get_browser_pool),
 ) -> JobCreateResponse:
     """
     Create an async audit job for the given URL.
 
+    If at max concurrency, the job is queued and will be processed when a slot opens.
     Returns job_id immediately, use GET /audit/{job_id} to check status.
     """
+    # Periodic cleanup of expired jobs
+    job_store.cleanup_expired()
+
     try:
         # Validate and normalize URL
         validated_url = validate_url(request.url)
 
-        # Check rate limit
+        # Check per-IP rate limit
         client_ip = req.client.host if req.client else "unknown"
         job_id = job_store.create_job(validated_url, client_ip)
         if job_id is None:
             raise HTTPException(
-                status_code=429, detail="Too many active jobs. Try again later."
+                status_code=429,
+                detail="Too many active jobs for this IP. Try again later.",
             )
 
-        # Start background audit
-        background_tasks.add_task(
-            run_audit_job,
-            job_id=job_id,
-            url=validated_url,
-            timeout=int(request.timeout or 600),
-            no_cache=request.no_cache or False,
-        )
+        timeout = int(request.timeout or 600)
+        no_cache = request.no_cache or False
 
-        return JobCreateResponse(
-            job_id=job_id,
-            status=JobStatus.PENDING,
-            message="Audit job created. Poll GET /v1/audit/{job_id} for status.",
-        )
+        # Try to acquire a concurrency slot
+        if concurrency_manager.try_acquire():
+            # Got a slot, start immediately
+            asyncio.create_task(
+                run_audit_job(
+                    job_id=job_id,
+                    url=validated_url,
+                    timeout=timeout,
+                    no_cache=no_cache,
+                    job_store=job_store,
+                    concurrency_manager=concurrency_manager,
+                    browser_pool=browser_pool,
+                )
+            )
+
+            return JobCreateResponse(
+                job_id=job_id,
+                status=JobStatus.PENDING,
+                message="Audit job created. Poll GET /v1/audit/{job_id} for status.",
+            )
+        else:
+            # No slot available, try to queue
+            queue_position = concurrency_manager.enqueue_job(
+                job_id=job_id,
+                url=validated_url,
+                options={"timeout": timeout, "no_cache": no_cache},
+            )
+
+            if queue_position is None:
+                # Queue is full, reject the request
+                # Remove the job we just created
+                with job_store._lock:
+                    if job_id in job_store.jobs:
+                        del job_store.jobs[job_id]
+                    for ip_jobs in job_store.ip_limits.values():
+                        ip_jobs.discard(job_id)
+
+                raise HTTPException(
+                    status_code=503,
+                    detail="Server at capacity. Queue is full. Try again later.",
+                )
+
+            # Update job status to QUEUED
+            with job_store._lock:
+                if job := job_store.jobs.get(job_id):
+                    job.status = JobStatus.QUEUED
+                    job.queue_position = queue_position
+
+            return JobCreateResponse(
+                job_id=job_id,
+                status=JobStatus.QUEUED,
+                message=f"Audit job queued at position {queue_position}. Poll GET /v1/audit/{{job_id}} for status.",
+            )
 
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception(f"Error creating audit: {e}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 
 @router.get("/audit/{job_id}", response_model=JobStatusResponse)
 async def get_audit_status(
-    job_id: str, job_store: JobStore = Depends(get_job_store)
+    job_id: str,
+    job_store: JobStore = Depends(get_job_store),
+    concurrency_manager: ConcurrencyManager = Depends(get_concurrency_manager),
 ) -> JobStatusResponse:
     """
     Get the status and results of an audit job.
 
-    Returns job status, progress, and results when complete.
+    Returns job status, progress, queue position (if queued), and results when complete.
     """
     job = job_store.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found or expired")
+
+    # Update queue position if still queued
+    queue_position: Optional[int] = None
+    if job.status == JobStatus.QUEUED:
+        queue_position = concurrency_manager.get_queue_position(job_id)
+        # Update stored position
+        with job_store._lock:
+            job.queue_position = queue_position
 
     # Calculate pending stages
     all_stages = {
@@ -137,7 +274,41 @@ async def get_audit_status(
         result=result,
         error=job.error,
         created_at=job.created_at,
+        queue_position=queue_position,
     )
+
+
+@router.delete("/audit/{job_id}")
+async def cancel_audit(
+    job_id: str,
+    job_store: JobStore = Depends(get_job_store),
+    concurrency_manager: ConcurrencyManager = Depends(get_concurrency_manager),
+) -> dict:
+    """
+    Cancel a queued audit job.
+
+    Only jobs in QUEUED status can be cancelled.
+    """
+    job = job_store.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found or expired")
+
+    if job.status != JobStatus.QUEUED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel job with status {job.status}. Only queued jobs can be cancelled.",
+        )
+
+    # Cancel in queue
+    cancelled = concurrency_manager.queue.cancel(job_id)
+    if cancelled:
+        with job_store._lock:
+            if job := job_store.jobs.get(job_id):
+                job.status = JobStatus.FAILED
+                job.error = "Cancelled by user"
+                job.queue_position = None
+
+    return {"job_id": job_id, "cancelled": cancelled}
 
 
 @router.get("/audits/running", response_model=PaginatedJobIds)
@@ -149,12 +320,12 @@ async def get_running_audits(
     """
     Get a paginated list of job IDs for all running audits.
 
-    Running audits include jobs with status PENDING or RUNNING.
+    Running audits include jobs with status PENDING, QUEUED, or RUNNING.
     """
     running_jobs = [
         job.id
         for job in job_store.jobs.values()
-        if job.status in [JobStatus.PENDING, JobStatus.RUNNING]
+        if job.status in [JobStatus.PENDING, JobStatus.QUEUED, JobStatus.RUNNING]
     ]
     total = len(running_jobs)
     start = (page - 1) * per_page
@@ -164,3 +335,32 @@ async def get_running_audits(
     return PaginatedJobIds(
         items=items, total=total, page=page, per_page=per_page, has_next=has_next
     )
+
+
+@router.get("/audits/stats")
+async def get_audit_stats(
+    concurrency_manager: ConcurrencyManager = Depends(get_concurrency_manager),
+    browser_pool: BrowserPool = Depends(get_browser_pool),
+) -> dict:
+    """
+    Get current audit system statistics.
+
+    Returns concurrency stats, queue stats, and browser pool stats.
+    """
+    concurrency_stats = concurrency_manager.get_stats()
+    browser_stats = browser_pool.get_stats()
+
+    return {
+        "concurrency": {
+            "active_audits": concurrency_stats.active_audits,
+            "max_concurrent_audits": concurrency_stats.max_concurrent_audits,
+            "available_slots": concurrency_stats.max_concurrent_audits
+            - concurrency_stats.active_audits,
+        },
+        "queue": {
+            "size": concurrency_stats.queue_size,
+            "max_size": concurrency_stats.max_queue_size,
+            "stats": concurrency_stats.queue_stats,
+        },
+        "browser_pool": browser_stats,
+    }

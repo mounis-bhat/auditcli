@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.12.5",
     "python-dotenv>=1.0.0",
     "tenacity>=8.0.0",
+    "playwright>=1.40.0",
 ]
 
 [build-system]
@@ -20,6 +21,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
+
+[project.scripts]
+auditcli-postinstall = "scripts.postinstall:main"
 
 [tool.uv]
 package = true

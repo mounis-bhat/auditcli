@@ -26,6 +26,7 @@ class JobStatusResponse(BaseModel):
     result: Optional[AuditResponse] = None  # Full AuditResponse when complete
     error: Optional[str] = None
     created_at: datetime
+    queue_position: Optional[int] = None  # Position in queue if status is QUEUED
 
 
 class PaginatedJobIds(BaseModel):
