@@ -12,7 +12,7 @@ def main() -> int:
 
     try:
         # Install all Playwright browsers to ensure compatibility
-        result = subprocess.run(
+        _result = subprocess.run(
             [sys.executable, "-m", "playwright", "install"],
             check=True,
             capture_output=False,

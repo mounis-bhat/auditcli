@@ -217,7 +217,7 @@ class BrowserPool:
         closed_count = 0
 
         async with self._pool_lock:
-            to_remove = []
+            to_remove: List[BrowserInstance] = []
             for instance in self._browsers:
                 if not instance.in_use:
                     idle_seconds = (now - instance.last_used).total_seconds()

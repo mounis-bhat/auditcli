@@ -130,6 +130,44 @@ class JobStore:
                 for ip_jobs in self.ip_limits.values():
                     ip_jobs.discard(job_id)
 
+    def update_job_status_and_position(
+        self,
+        job_id: str,
+        status: JobStatus,
+        queue_position: Optional[int] = None,
+        error: Optional[str] = None,
+    ) -> bool:
+        """Update job status, queue position, and optional error. Returns True if job exists."""
+        with self._lock:
+            if job := self.jobs.get(job_id):
+                job.status = status
+                job.queue_position = queue_position
+                if error is not None:
+                    job.error = error
+                return True
+        return False
+
+    def remove_job(self, job_id: str) -> bool:
+        """Remove a job from storage and IP tracking. Returns True if job existed."""
+        with self._lock:
+            existed = job_id in self.jobs
+            if existed:
+                del self.jobs[job_id]
+            # Always clean up IP tracking
+            for ip_jobs in self.ip_limits.values():
+                ip_jobs.discard(job_id)
+            # Clean up empty IP sets
+            self.ip_limits = {ip: jobs for ip, jobs in self.ip_limits.items() if jobs}
+            return existed
+
+    def update_queue_position(self, job_id: str, queue_position: Optional[int]) -> bool:
+        """Update the queue position for a job. Returns True if job exists."""
+        with self._lock:
+            if job := self.jobs.get(job_id):
+                job.queue_position = queue_position
+                return True
+        return False
+
     def cleanup_expired(self):
         with self._lock:
             expiry_time = datetime.now(timezone.utc) - timedelta(hours=24)

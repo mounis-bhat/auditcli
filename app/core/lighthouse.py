@@ -19,7 +19,7 @@ from app.schemas.audit import (
     LighthouseReport,
     Opportunity,
 )
-from app.services.browser_pool import BrowserInstance, BrowserPool
+from app.services.browser_pool import BrowserPool
 
 logger = logging.getLogger(__name__)
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from app.config.settings import get_config
 from app.services.queue import PersistentQueue
@@ -19,7 +19,7 @@ class ConcurrencyStats:
     max_concurrent_audits: int
     queue_size: int
     max_queue_size: int
-    queue_stats: Dict[str, int] = field(default_factory=dict)
+    queue_stats: Dict[str, int] = field(default_factory=lambda: {})
 
 
 class ConcurrencyManager:
@@ -127,7 +127,7 @@ class ConcurrencyManager:
         return self.queue.size() < self.queue.max_size
 
     def enqueue_job(
-        self, job_id: str, url: str, options: Optional[Dict] = None
+        self, job_id: str, url: str, options: Optional[Dict[str, Any]] = None
     ) -> Optional[int]:
         """
         Enqueue a job for later processing.

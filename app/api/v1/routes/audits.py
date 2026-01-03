@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 
@@ -100,9 +100,7 @@ async def process_next_queued_job(
         return
 
     # Update status
-    with job_store._lock:
-        job.status = JobStatus.PENDING
-        job.queue_position = None
+    job_store.update_job_status_and_position(queued_job.job_id, JobStatus.PENDING, None)
 
     # Get options
     options = queued_job.options
@@ -191,11 +189,7 @@ async def create_audit(
             if queue_position is None:
                 # Queue is full, reject the request
                 # Remove the job we just created
-                with job_store._lock:
-                    if job_id in job_store.jobs:
-                        del job_store.jobs[job_id]
-                    for ip_jobs in job_store.ip_limits.values():
-                        ip_jobs.discard(job_id)
+                job_store.remove_job(job_id)
 
                 raise HTTPException(
                     status_code=503,
@@ -203,10 +197,9 @@ async def create_audit(
                 )
 
             # Update job status to QUEUED
-            with job_store._lock:
-                if job := job_store.jobs.get(job_id):
-                    job.status = JobStatus.QUEUED
-                    job.queue_position = queue_position
+            job_store.update_job_status_and_position(
+                job_id, JobStatus.QUEUED, queue_position
+            )
 
             return JobCreateResponse(
                 job_id=job_id,
@@ -243,8 +236,7 @@ async def get_audit_status(
     if job.status == JobStatus.QUEUED:
         queue_position = concurrency_manager.get_queue_position(job_id)
         # Update stored position
-        with job_store._lock:
-            job.queue_position = queue_position
+        job_store.update_queue_position(job_id, queue_position)
 
     # Calculate pending stages
     all_stages = {
@@ -283,7 +275,7 @@ async def cancel_audit(
     job_id: str,
     job_store: JobStore = Depends(get_job_store),
     concurrency_manager: ConcurrencyManager = Depends(get_concurrency_manager),
-) -> dict:
+) -> Dict[str, Any]:
     """
     Cancel a queued audit job.
 
@@ -302,11 +294,9 @@ async def cancel_audit(
     # Cancel in queue
     cancelled = concurrency_manager.queue.cancel(job_id)
     if cancelled:
-        with job_store._lock:
-            if job := job_store.jobs.get(job_id):
-                job.status = JobStatus.FAILED
-                job.error = "Cancelled by user"
-                job.queue_position = None
+        job_store.update_job_status_and_position(
+            job_id, JobStatus.FAILED, None, "Cancelled by user"
+        )
 
     return {"job_id": job_id, "cancelled": cancelled}
 
@@ -341,7 +331,7 @@ async def get_running_audits(
 async def get_audit_stats(
     concurrency_manager: ConcurrencyManager = Depends(get_concurrency_manager),
     browser_pool: BrowserPool = Depends(get_browser_pool),
-) -> dict:
+) -> Dict[str, Any]:
     """
     Get current audit system statistics.
 
