@@ -8,6 +8,11 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+from scalar_fastapi import (
+    Theme,  # type: ignore[import-untyped]
+    get_scalar_api_reference,  # type: ignore[import-untyped]
+)
 
 from app.api.v1 import router as v1_router
 from app.services.browser_pool import BrowserPool
@@ -88,10 +93,24 @@ app = FastAPI(
     description="API for running comprehensive web performance audits using Lighthouse, CrUX, and AI analysis",
     version="0.1.0",
     lifespan=lifespan,
+    docs_url=None,  # Disable default Swagger UI
+    redoc_url=None,  # cSpell:ignore redoc - Disable ReDoc
 )
 
 # Include API v1 routes
 app.include_router(v1_router)
+
+
+@app.get("/docs", response_class=HTMLResponse, include_in_schema=False)
+async def scalar_docs() -> HTMLResponse:
+    """Serve Scalar API documentation."""
+    return get_scalar_api_reference(  # type: ignore[return-value]
+        openapi_url=app.openapi_url,
+        title="Web Audit API - Documentation",
+        dark_mode=True,
+        hide_dark_mode_toggle=False,
+        theme=Theme.KEPLER,
+    )
 
 
 @app.get("/")
