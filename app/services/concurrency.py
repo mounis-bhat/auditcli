@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any
 
 from app.config.settings import get_config
 from app.services.queue import PersistentQueue
@@ -19,7 +19,7 @@ class ConcurrencyStats:
     max_concurrent_audits: int
     queue_size: int
     max_queue_size: int
-    queue_stats: Dict[str, int] = field(default_factory=lambda: {})
+    queue_stats: dict[str, int] = field(default_factory=lambda: {})
 
 
 class ConcurrencyManager:
@@ -30,18 +30,18 @@ class ConcurrencyManager:
     integrates with the persistent queue for overflow.
     """
 
-    _instance: Optional["ConcurrencyManager"] = None
+    _instance: ConcurrencyManager | None = None
     _lock = threading.Lock()
 
-    def __init__(self, max_concurrent: int, queue: PersistentQueue):
+    def __init__(self, max_concurrent: int, queue: PersistentQueue) -> None:
         self.max_concurrent = max_concurrent
         self.queue = queue
-        self._semaphore: Optional[asyncio.Semaphore] = None
+        self._semaphore: asyncio.Semaphore | None = None
         self._active_count = 0
         self._count_lock = threading.Lock()
 
     @classmethod
-    def get_instance(cls) -> "ConcurrencyManager":
+    def get_instance(cls) -> ConcurrencyManager:
         """Get or create the singleton concurrency manager."""
         with cls._lock:
             if cls._instance is None:
@@ -127,8 +127,8 @@ class ConcurrencyManager:
         return self.queue.size() < self.queue.max_size
 
     def enqueue_job(
-        self, job_id: str, url: str, options: Optional[Dict[str, Any]] = None
-    ) -> Optional[int]:
+        self, job_id: str, url: str, options: dict[str, Any] | None = None
+    ) -> int | None:
         """
         Enqueue a job for later processing.
 
@@ -136,7 +136,7 @@ class ConcurrencyManager:
         """
         return self.queue.enqueue(job_id, url, options)
 
-    def get_queue_position(self, job_id: str) -> Optional[int]:
+    def get_queue_position(self, job_id: str) -> int | None:
         """Get the current queue position for a job."""
         return self.queue.get_position(job_id)
 

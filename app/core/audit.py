@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable
 
 from app.core.ai import generate_ai_report
-from app.core.lighthouse import run_lighthouse_parallel, run_lighthouse_single
+from app.core.lighthouse import run_lighthouse_parallel
 from app.core.psi import fetch_crux_async
 from app.errors.exceptions import APIError, AuditError
 from app.schemas.audit import (
@@ -17,14 +18,16 @@ from app.schemas.audit import (
     LighthouseReport,
 )
 from app.schemas.common import Status
-from app.services.jobs import AuditStage
-from app.services.cache import (
-    get_cached_result,
-    store_result,
-    acquire_url_lock,
-    release_url_lock,
-)
 from app.services.browser_pool import BrowserPool
+from app.services.cache import (
+    acquire_url_lock,
+    get_cached_result,
+    release_url_lock,
+    store_result,
+)
+from app.services.jobs import AuditStage
+
+logger = logging.getLogger(__name__)
 
 
 async def run_audit_async(
@@ -32,9 +35,9 @@ async def run_audit_async(
     browser_pool: BrowserPool,
     timeout: float = 600.0,
     no_cache: bool = False,
-    on_stage_start: Optional[Callable[[AuditStage], None]] = None,
-    on_stage_complete: Optional[Callable[[AuditStage], None]] = None,
-) -> Dict[str, Any]:
+    on_stage_start: Callable[[AuditStage], None] | None = None,
+    on_stage_complete: Callable[[AuditStage], None] | None = None,
+) -> dict[str, Any]:
     """
     Run a complete web audit asynchronously with parallel Lighthouse execution.
 
@@ -77,11 +80,11 @@ async def run_audit_async(
             if cached_result:
                 return AuditResponse.model_validate(cached_result).model_dump()
 
-        lighthouse: Optional[LighthouseReport] = None
-        crux: Optional[CrUXData] = None
-        ai_report = None
-        error_messages: List[str] = []
-        timing: Dict[str, float] = {}
+        lighthouse: LighthouseReport | None = None
+        crux: CrUXData | None = None
+        ai_report: Any | None = None
+        error_messages: list[str] = []
+        timing: dict[str, float] = {}
 
         # Track stage completion for parallel lighthouse
         mobile_started = False
@@ -168,9 +171,7 @@ async def run_audit_async(
             on_stage_start(AuditStage.AI_ANALYSIS)
         ai_start = time.time()
         try:
-            ai_report = await asyncio.to_thread(
-                generate_ai_report, url, lighthouse, crux, timeout
-            )
+            ai_report = await asyncio.to_thread(generate_ai_report, url, lighthouse, crux, timeout)
             timing["ai"] = time.time() - ai_start
             if on_stage_complete:
                 on_stage_complete(AuditStage.AI_ANALYSIS)
@@ -209,9 +210,12 @@ async def run_audit_async(
         if not no_cache and (status == Status.SUCCESS or status == Status.PARTIAL):
             try:
                 await asyncio.to_thread(store_result, url, result.model_dump())
-            except Exception:
-                # Caching failure shouldn't break the audit
-                pass
+            except Exception as e:
+                # Caching failure shouldn't break the audit, but log for debugging
+                logger.warning(
+                    f"Failed to cache audit result for {url}: {e}",
+                    exc_info=logger.isEnabledFor(logging.DEBUG),
+                )
 
         return result.model_dump()
 

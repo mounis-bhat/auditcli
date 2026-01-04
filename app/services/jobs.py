@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from enum import Enum
-from dataclasses import dataclass, field
-from typing import Dict, Optional, List, Any
-from datetime import datetime, timedelta, timezone
-import uuid
 import threading
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from enum import Enum
+from typing import Any
 
 from app.services.websocket import websocket_manager
 
@@ -25,7 +25,7 @@ class AuditStage(str, Enum):
     AI_ANALYSIS = "ai_analysis"
 
 
-def _default_completed_stages() -> List[AuditStage]:
+def _default_completed_stages() -> list[AuditStage]:
     return []
 
 
@@ -34,23 +34,21 @@ class Job:
     id: str
     status: JobStatus
     url: str
-    current_stage: Optional[AuditStage] = None
-    completed_stages: List[AuditStage] = field(
-        default_factory=_default_completed_stages
-    )
-    result: Optional[Dict[str, Any]] = None  # Will hold AuditResponse dict
-    error: Optional[str] = None
+    current_stage: AuditStage | None = None
+    completed_stages: list[AuditStage] = field(default_factory=_default_completed_stages)
+    result: dict[str, Any] | None = None  # Will hold AuditResponse dict
+    error: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    queue_position: Optional[int] = None  # Position in queue if status is QUEUED
+    queue_position: int | None = None  # Position in queue if status is QUEUED
 
 
 class JobStore:
-    _instance = None
+    _instance: JobStore | None = None
     _lock = threading.Lock()
 
-    def __init__(self):
-        self.jobs: Dict[str, Job] = {}
-        self.ip_limits: Dict[str, set[str]] = {}  # IP -> set of active job_ids
+    def __init__(self) -> None:
+        self.jobs: dict[str, Job] = {}
+        self.ip_limits: dict[str, set[str]] = {}  # IP -> set of active job_ids
         self.max_jobs_per_ip = 5
 
     def _get_progress(self, job: Job) -> int:
@@ -59,13 +57,13 @@ class JobStore:
         return int((len(job.completed_stages) / total_stages) * 100)
 
     @classmethod
-    def get_instance(cls) -> "JobStore":
+    def get_instance(cls) -> JobStore:
         with cls._lock:
             if cls._instance is None:
                 cls._instance = cls()
             return cls._instance
 
-    def create_job(self, url: str, client_ip: str) -> Optional[str]:
+    def create_job(self, url: str, client_ip: str) -> str | None:
         with self._lock:
             # Check rate limit
             active_jobs = self.ip_limits.get(client_ip, set())
@@ -78,21 +76,19 @@ class JobStore:
             self.ip_limits.setdefault(client_ip, set()).add(job_id)
             return job_id
 
-    def get_job(self, job_id: str) -> Optional[Job]:
+    def get_job(self, job_id: str) -> Job | None:
         with self._lock:
             return self.jobs.get(job_id)
 
-    def update_stage(self, job_id: str, stage: AuditStage):
+    def update_stage(self, job_id: str, stage: AuditStage) -> None:
         with self._lock:
             if job := self.jobs.get(job_id):
                 job.status = JobStatus.RUNNING
                 job.current_stage = stage
                 progress = self._get_progress(job)
-                websocket_manager.enqueue_broadcast(
-                    job_id, stage.value, progress, job.status.value
-                )
+                websocket_manager.enqueue_broadcast(job_id, stage.value, progress, job.status.value)
 
-    def complete_stage(self, job_id: str, stage: AuditStage):
+    def complete_stage(self, job_id: str, stage: AuditStage) -> None:
         with self._lock:
             if job := self.jobs.get(job_id):
                 job.completed_stages.append(stage)
@@ -102,30 +98,26 @@ class JobStore:
                     job_id, current_stage, progress, job.status.value
                 )
 
-    def complete_job(self, job_id: str, result: Dict[str, Any]):
+    def complete_job(self, job_id: str, result: dict[str, Any]) -> None:
         with self._lock:
             if job := self.jobs.get(job_id):
                 job.status = JobStatus.COMPLETED
                 job.result = result
                 job.current_stage = None
                 progress = 100
-                websocket_manager.enqueue_broadcast(
-                    job_id, "", progress, job.status.value
-                )
+                websocket_manager.enqueue_broadcast(job_id, "", progress, job.status.value)
                 # Remove from IP tracking
                 for ip_jobs in self.ip_limits.values():
                     ip_jobs.discard(job_id)
 
-    def fail_job(self, job_id: str, error: str):
+    def fail_job(self, job_id: str, error: str) -> None:
         with self._lock:
             if job := self.jobs.get(job_id):
                 job.status = JobStatus.FAILED
                 job.error = error
                 job.current_stage = None
                 progress = self._get_progress(job)
-                websocket_manager.enqueue_broadcast(
-                    job_id, "", progress, job.status.value
-                )
+                websocket_manager.enqueue_broadcast(job_id, "", progress, job.status.value)
                 # Remove from IP tracking
                 for ip_jobs in self.ip_limits.values():
                     ip_jobs.discard(job_id)
@@ -134,8 +126,8 @@ class JobStore:
         self,
         job_id: str,
         status: JobStatus,
-        queue_position: Optional[int] = None,
-        error: Optional[str] = None,
+        queue_position: int | None = None,
+        error: str | None = None,
     ) -> bool:
         """Update job status, queue position, and optional error. Returns True if job exists."""
         with self._lock:
@@ -160,7 +152,7 @@ class JobStore:
             self.ip_limits = {ip: jobs for ip, jobs in self.ip_limits.items() if jobs}
             return existed
 
-    def update_queue_position(self, job_id: str, queue_position: Optional[int]) -> bool:
+    def update_queue_position(self, job_id: str, queue_position: int | None) -> bool:
         """Update the queue position for a job. Returns True if job exists."""
         with self._lock:
             if job := self.jobs.get(job_id):
@@ -168,13 +160,11 @@ class JobStore:
                 return True
         return False
 
-    def cleanup_expired(self):
+    def cleanup_expired(self) -> None:
         with self._lock:
             expiry_time = datetime.now(timezone.utc) - timedelta(hours=24)
             expired_ids = [
-                job_id
-                for job_id, job in self.jobs.items()
-                if job.created_at < expiry_time
+                job_id for job_id, job in self.jobs.items() if job.created_at < expiry_time
             ]
             for job_id in expired_ids:
                 del self.jobs[job_id]

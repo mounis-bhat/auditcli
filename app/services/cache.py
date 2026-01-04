@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import json
+import logging
 import sqlite3
 import threading
 import time
@@ -10,6 +11,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from app.config.settings import get_config
+
+logger = logging.getLogger(__name__)
 
 # Thread-safe initialization flag
 _cache_initialized = False
@@ -148,9 +151,13 @@ def get_cached_result(url: str) -> Optional[Dict[str, Any]]:
 
         _increment_metric("misses")
         return None
-    except (sqlite3.Error, json.JSONDecodeError):
+    except (sqlite3.Error, json.JSONDecodeError) as e:
         _increment_metric("misses")
         # If cache is corrupted, return None (will recreate on next write)
+        logger.debug(
+            f"Cache read error for {url}: {e}. Will fetch fresh data.",
+            exc_info=logger.isEnabledFor(logging.DEBUG),
+        )
         return None
 
 
@@ -183,9 +190,12 @@ def store_result(url: str, result: Dict[str, Any]) -> None:
             )
             conn.commit()
         _increment_metric("stores")
-    except (sqlite3.Error, json.JSONDecodeError):
+    except (sqlite3.Error, json.JSONDecodeError) as e:
         # If caching fails, silently continue (caching is optional)
-        pass
+        logger.debug(
+            f"Cache write error for {url}: {e}. Audit will still complete.",
+            exc_info=logger.isEnabledFor(logging.DEBUG),
+        )
 
 
 def clear_cache() -> None:
@@ -402,9 +412,7 @@ def cleanup_url_locks() -> int:
     """
     removed = 0
     with _url_locks_lock:
-        to_remove = [
-            url_hash for url_hash, lock in _url_locks.items() if not lock.locked()
-        ]
+        to_remove = [url_hash for url_hash, lock in _url_locks.items() if not lock.locked()]
         for url_hash in to_remove:
             del _url_locks[url_hash]
             removed += 1
