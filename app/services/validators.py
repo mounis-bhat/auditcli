@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from app.errors.exceptions import ValidationError
 
 
-def validate_url(url: str) -> str:
+def validate_url(url: str) -> str:  # noqa: C901
     """
     Validate and normalize URL.
     Returns normalized URL or raises ValidationError.
@@ -25,7 +25,7 @@ def validate_url(url: str) -> str:
     try:
         parsed = urlparse(url)
     except Exception as e:
-        raise ValidationError(f"Invalid URL format: {str(e)}")
+        raise ValidationError(f"Invalid URL format: {str(e)}") from e
 
     # Validate scheme
     if parsed.scheme not in ("http", "https"):
@@ -49,8 +49,8 @@ def validate_url(url: str) -> str:
             port = int(port_str)
             if not (1 <= port <= 65535):
                 raise ValidationError(f"Port {port} is out of valid range (1-65535)")
-        except ValueError:
-            raise ValidationError(f"Invalid port: {port_str}")
+        except ValueError as e:
+            raise ValidationError(f"Invalid port: {port_str}") from e
 
     # Check for localhost/IP addresses (basic validation)
     if hostname in ("localhost", "127.0.0.1", "0.0.0.0"):

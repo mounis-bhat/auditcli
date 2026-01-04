@@ -28,10 +28,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def run_audit_job(
+async def run_audit_job(  # noqa: ASYNC109
     job_id: str,
     url: str,
-    timeout: int,
+    timeout: int,  # noqa: ASYNC109
     no_cache: bool,
     job_store: JobStore,
     concurrency_manager: ConcurrencyManager,
@@ -129,9 +129,9 @@ async def process_next_queued_job(
 async def create_audit(
     request: AuditRequest,
     req: Request,
-    job_store: JobStore = Depends(get_job_store),
-    concurrency_manager: ConcurrencyManager = Depends(get_concurrency_manager),
-    browser_pool: BrowserPool = Depends(get_browser_pool),
+    job_store: JobStore = Depends(get_job_store),  # noqa: B008
+    concurrency_manager: ConcurrencyManager = Depends(get_concurrency_manager),  # noqa: B008
+    browser_pool: BrowserPool = Depends(get_browser_pool),  # noqa: B008
 ) -> JobCreateResponse:
     """
     Create an async audit job for the given URL.
@@ -206,19 +206,19 @@ async def create_audit(
             )
 
     except ValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except HTTPException:
         raise
     except Exception as e:
         logger.exception(f"Error creating audit: {e}")
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}") from e
 
 
 @router.get("/audit/{job_id}", response_model=JobStatusResponse)
 async def get_audit_status(
     job_id: str,
-    job_store: JobStore = Depends(get_job_store),
-    concurrency_manager: ConcurrencyManager = Depends(get_concurrency_manager),
+    job_store: JobStore = Depends(get_job_store),  # noqa: B008
+    concurrency_manager: ConcurrencyManager = Depends(get_concurrency_manager),  # noqa: B008
 ) -> JobStatusResponse:
     """
     Get the status and results of an audit job.
@@ -271,8 +271,8 @@ async def get_audit_status(
 @router.delete("/audit/{job_id}")
 async def cancel_audit(
     job_id: str,
-    job_store: JobStore = Depends(get_job_store),
-    concurrency_manager: ConcurrencyManager = Depends(get_concurrency_manager),
+    job_store: JobStore = Depends(get_job_store),  # noqa: B008
+    concurrency_manager: ConcurrencyManager = Depends(get_concurrency_manager),  # noqa: B008
 ) -> dict[str, Any]:
     """
     Cancel a queued audit job.
@@ -303,7 +303,7 @@ async def cancel_audit(
 async def get_running_audits(
     page: int = Query(1, ge=1),
     per_page: int = Query(10, ge=1, le=100),
-    job_store: JobStore = Depends(get_job_store),
+    job_store: JobStore = Depends(get_job_store),  # noqa: B008
 ) -> PaginatedJobIds:
     """
     Get a paginated list of job IDs for all running audits.
@@ -327,8 +327,8 @@ async def get_running_audits(
 
 @router.get("/audits/stats")
 async def get_audit_stats(
-    concurrency_manager: ConcurrencyManager = Depends(get_concurrency_manager),
-    browser_pool: BrowserPool = Depends(get_browser_pool),
+    concurrency_manager: ConcurrencyManager = Depends(get_concurrency_manager),  # noqa: B008
+    browser_pool: BrowserPool = Depends(get_browser_pool),  # noqa: B008
 ) -> dict[str, Any]:
     """
     Get current audit system statistics.

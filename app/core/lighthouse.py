@@ -160,11 +160,11 @@ def _run_single_lighthouse_sync(
         raise RuntimeError(f"Lighthouse failed ({preset}):\n{result.stderr}")
 
 
-async def _run_single_lighthouse_async(
+async def _run_single_lighthouse_async(  # noqa: ASYNC109
     url: str,
     preset: str,
     output_path: Path,
-    timeout: float,
+    timeout: float,  # noqa: ASYNC109
     cdp_port: int | None = None,
 ) -> LighthouseMetrics:
     """
@@ -187,31 +187,31 @@ async def _run_single_lighthouse_async(
         )
 
         # Parse output
-        with open(output_path) as f:
-            lh_json = json.load(f)
+        with open(output_path) as f:  # noqa: ASYNC230
+            lh_json = json.load(f)  # noqa: ASYNC230
 
         return _extract_metrics(lh_json)
 
-    except TimeoutError:
-        raise AuditError(f"{preset.capitalize()} audit timed out after {timeout}s")
+    except TimeoutError as e:
+        raise AuditError(f"{preset.capitalize()} audit timed out after {timeout}s") from e
     except subprocess.TimeoutExpired as e:
-        raise AuditError(f"{preset.capitalize()} audit timed out after {e.timeout}s")
+        raise AuditError(f"{preset.capitalize()} audit timed out after {e.timeout}s") from e
     except RuntimeError as e:
-        raise AuditError(f"Lighthouse process failed ({preset}): {e}")
+        raise AuditError(f"Lighthouse process failed ({preset}): {e}") from e
     except json.JSONDecodeError as e:
-        raise AuditError(f"Failed to parse Lighthouse output ({preset}): {e}")
-    except FileNotFoundError:
-        raise AuditError(f"Lighthouse output file not found ({preset})")
+        raise AuditError(f"Failed to parse Lighthouse output ({preset}): {e}") from e
+    except FileNotFoundError as e:
+        raise AuditError(f"Lighthouse output file not found ({preset})") from e
     except KeyError as e:
-        raise AuditError(f"Missing expected key in Lighthouse output ({preset}): {e}")
+        raise AuditError(f"Missing expected key in Lighthouse output ({preset}): {e}") from e
     except OSError as e:
-        raise AuditError(f"OS error running Lighthouse ({preset}): {e}")
+        raise AuditError(f"OS error running Lighthouse ({preset}): {e}") from e
 
 
-async def run_lighthouse_parallel(
+async def run_lighthouse_parallel(  # noqa: ASYNC109, C901
     url: str,
     browser_pool: BrowserPool,
-    timeout: float = 600.0,
+    timeout: float = 600.0,  # noqa: ASYNC109
     on_mobile_start: Callable[[], None] | None = None,
     on_mobile_complete: Callable[[], None] | None = None,
     on_desktop_start: Callable[[], None] | None = None,
@@ -380,24 +380,24 @@ def run_lighthouse_single(url: str, strategy: str, timeout: float = 300.0) -> Li
         # Run the audit
         try:
             _run_single_lighthouse_sync(url, strategy, output_path, timeout)
-            with open(output_path) as f:
+            with open(output_path) as f:  # noqa: ASYNC230
                 lh_json = json.load(f)
             return _extract_metrics(lh_json)
         except subprocess.TimeoutExpired as e:
-            raise AuditError(f"{strategy.capitalize()} audit timed out after {e.timeout}s")
+            raise AuditError(f"{strategy.capitalize()} audit timed out after {e.timeout}s") from e
         except subprocess.CalledProcessError as e:
-            raise AuditError(f"Lighthouse process failed ({strategy}): {e}")
+            raise AuditError(f"Lighthouse process failed ({strategy}): {e}") from e
         except json.JSONDecodeError as e:
-            raise AuditError(f"Failed to parse Lighthouse output ({strategy}): {e}")
-        except FileNotFoundError:
-            raise AuditError(f"Lighthouse output file not found ({strategy})")
+            raise AuditError(f"Failed to parse Lighthouse output ({strategy}): {e}") from e
+        except FileNotFoundError as e:
+            raise AuditError(f"Lighthouse output file not found ({strategy})") from e
         except KeyError as e:
-            raise AuditError(f"Missing expected key in Lighthouse output ({strategy}): {e}")
+            raise AuditError(f"Missing expected key in Lighthouse output ({strategy}): {e}") from e
         except OSError as e:
-            raise AuditError(f"OS error running Lighthouse ({strategy}): {e}")
+            raise AuditError(f"OS error running Lighthouse ({strategy}): {e}") from e
 
 
-def run_lighthouse(url: str, timeout: float = 600.0) -> LighthouseReport:
+def run_lighthouse(url: str, timeout: float = 600.0) -> LighthouseReport:  # noqa: C901
     """
     Run Lighthouse for mobile and desktop sequentially.
 

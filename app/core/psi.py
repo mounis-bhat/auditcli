@@ -145,7 +145,7 @@ def _get_loading_experience(data: dict[str, Any]) -> dict[str, Any] | None:
     wait=wait_exponential(multiplier=1, min=4, max=10),
     retry=retry_if_exception_type(APIError),
 )
-async def fetch_crux_async(url: str, timeout: float = 60.0) -> CrUXData | None:
+async def fetch_crux_async(url: str, timeout: float = 60.0) -> CrUXData | None:  # noqa: ASYNC109
     """
     Async version of fetch_crux - fetches CrUX field data from PageSpeed Insights API.
 

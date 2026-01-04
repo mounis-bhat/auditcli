@@ -13,7 +13,7 @@ router = APIRouter()
 async def audit_websocket(
     websocket: WebSocket,
     job_id: str,
-    job_store: JobStore = Depends(get_job_store),
+    job_store: JobStore = Depends(get_job_store),  # noqa: B008
 ):
     """WebSocket endpoint for real-time audit status updates."""
     # Validate job exists
