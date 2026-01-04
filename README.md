@@ -309,8 +309,7 @@ AI-generated analysis including:
 | `POST` | `/v1/cache/cleanup` | Clean expired cache entries |
 | `DELETE` | `/v1/cache` | Clear all cache |
 | `WS` | `/v1/audit/{job_id}` | Real-time progress updates |
-| `GET` | `/v1/health` | Health check |
-| `GET` | `/v1/health/detailed` | Detailed health check |
+| `GET` | `/v1/health` | Comprehensive health check |
 
 ## Integration
 
@@ -343,7 +342,7 @@ uv run python -m pytest tests/ -v
 uv run uvicorn app.main:app --reload
 
 # Test API endpoints
-curl http://localhost:8000/v1/health  # Health check
+curl http://localhost:8000/v1/health  # Comprehensive health check
 curl http://localhost:8000/v1/cache/stats  # Cache statistics
 curl -X GET http://localhost:8000/v1/audits/running  # Running audits
 
