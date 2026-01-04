@@ -4,7 +4,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, TypeVar
+from typing import Dict, Optional, TypeVar
 
 T = TypeVar("T")
 

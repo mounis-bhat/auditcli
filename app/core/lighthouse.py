@@ -264,7 +264,15 @@ async def run_lighthouse_parallel(
             return metrics, None
         except AuditError as e:
             return None, str(e)
-        except Exception as e:
+        except (asyncio.TimeoutError, subprocess.TimeoutExpired) as e:
+            return None, f"Mobile audit timed out: {e}"
+        except (
+            RuntimeError,
+            json.JSONDecodeError,
+            FileNotFoundError,
+            KeyError,
+            OSError,
+        ) as e:
             return None, f"Mobile audit failed: {e}"
 
     async def run_desktop(
@@ -283,7 +291,15 @@ async def run_lighthouse_parallel(
             return metrics, None
         except AuditError as e:
             return None, str(e)
-        except Exception as e:
+        except (asyncio.TimeoutError, subprocess.TimeoutExpired) as e:
+            return None, f"Desktop audit timed out: {e}"
+        except (
+            RuntimeError,
+            json.JSONDecodeError,
+            FileNotFoundError,
+            KeyError,
+            OSError,
+        ) as e:
             return None, f"Desktop audit failed: {e}"
 
     # Create temp directories for each audit

@@ -1,6 +1,6 @@
 # AuditCLI
 
-A robust, production-ready CLI tool that runs comprehensive web audits using Lighthouse, fetches real-world performance data from CrUX, and generates AI-powered insights. Features automatic caching, comprehensive input validation, graceful error handling, configurable timeouts, and detailed performance profiling. Returns everything as structured JSON for easy integration with CI/CD pipelines and monitoring systems.
+A robust, production-ready FastAPI web service that runs comprehensive web audits using Lighthouse, fetches real-world performance data from CrUX, and generates AI-powered insights. Features automatic caching, comprehensive input validation, graceful error handling, configurable timeouts, and detailed performance profiling. Returns everything as structured JSON for easy integration with CI/CD pipelines and monitoring systems.
 
 ## Installation
 
@@ -21,17 +21,32 @@ uv sync
 - Lighthouse CLI (`npm install -g lighthouse`)
 - Google Gemini API key (for AI insights) - **validated on startup**
 - Google PageSpeed Insights API key (for CrUX field data) - **validated on startup**
-- [jq](https://jqlang.github.io/jq/) (optional, for pretty-printing JSON)
 
 ## Environment Variables
 
 Create a `.env` file:
 
 ```env
+# API Keys (required)
 GOOGLE_API_KEY=your_gemini_key_here  # For AI insights
 PSI_API_KEY=your_psi_key_here        # For CrUX field data
-CACHE_TTL_SECONDS=86400              # Cache TTL in seconds (default: 86400 = 1 day)
+
+# Database and caching
 AUDIT_CACHE_PATH=./audit_cache.db    # Path to SQLite cache database (default: ./audit_cache.db)
+CACHE_TTL_SECONDS=86400              # Cache TTL in seconds (default: 86400 = 1 day)
+
+# Audit settings
+AUDIT_TIMEOUT=600                    # Default audit timeout in seconds (default: 600)
+
+# Concurrency Controls
+MAX_CONCURRENT_AUDITS=10             # Maximum number of audits running concurrently (default: 10)
+MAX_QUEUE_SIZE=50                    # Maximum queue size for pending audits (default: 50)
+QUEUE_TIMEOUT_SECONDS=300            # Timeout for queued audits in seconds (default: 300)
+
+# Browser Pool Settings
+BROWSER_POOL_SIZE=5                  # Number of browsers to keep in pool (default: 5)
+BROWSER_LAUNCH_TIMEOUT=30            # Browser launch timeout in seconds (default: 30)
+BROWSER_IDLE_TIMEOUT=300             # Idle browser cleanup timeout in seconds (default: 300)
 ```
 
 ### Getting API Keys
@@ -43,50 +58,60 @@ AUDIT_CACHE_PATH=./audit_cache.db    # Path to SQLite cache database (default: .
 
 1. **Install dependencies**: `uv sync`
 2. **Set up API keys** in `.env` file
-3. **Test validation**: `uv run auditcli --validate-only https://example.com`
-4. **Run your first audit**: `uv run auditcli https://yourwebsite.com | jq`
+3. **Start the server**: `uv run uvicorn app.main:app --reload`
+4. **Test the API**: `curl -X POST http://localhost:8000/v1/audit -H "Content-Type: application/json" -d '{"url": "https://example.com"}'`
 
-## Usage
+## API Usage
 
-### Command Line Flags
+The service provides a REST API for running web audits asynchronously with real-time progress updates.
+
+### Create Audit Job
 
 ```bash
-uv run auditcli [OPTIONS] [URL]
-
-Options:
-  --timeout SECONDS    Audit timeout in seconds (default: 600 = 10 minutes)
-  --no-cache          Skip cache check and don't store results
-  --validate-only      Validate inputs without running audit
-  --help, -h          Show help message and exit
+curl -X POST http://localhost:8000/v1/audit \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://yourwebsite.com"}'
 ```
+
+Response:
+```json
+{
+  "job_id": "abc123...",
+  "status": "pending",
+  "message": "Audit job created. Poll GET /v1/audit/{job_id} for status."
+}
+```
+
+### Check Job Status
+
+```bash
+curl http://localhost:8000/v1/audit/{job_id}
+```
+
+### WebSocket Progress Updates
+
+Connect to `ws://localhost:8000/v1/audit/{job_id}` for real-time progress updates.
 
 ### Examples
 
 ```bash
-# Run audit with default settings
-uv run auditcli https://mounis.net
+# Start an audit
+JOB_ID=$(curl -X POST http://localhost:8000/v1/audit \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://mounis.net"}' | jq -r '.job_id')
 
-# Run audit with custom timeout (5 minutes)
-uv run auditcli --timeout 300 https://mounis.net
-
-# Validate inputs without running expensive audit
-uv run auditcli --validate-only https://example.com
-
-# Get help
-uv run auditcli --help
-
-# Pretty print with jq
-uv run auditcli https://mounis.net | jq
+# Check status
+curl http://localhost:8000/v1/audit/$JOB_ID | jq
 
 # Extract specific data
-uv run auditcli https://mounis.net | jq '.lighthouse.mobile.categories'
-uv run auditcli https://mounis.net | jq '.insights.ai_report.executive_summary'
-uv run auditcli https://mounis.net | jq '.timing'  # Performance profiling data
+curl http://localhost:8000/v1/audit/$JOB_ID | jq '.result.lighthouse.mobile.categories'
+curl http://localhost:8000/v1/audit/$JOB_ID | jq '.result.insights.ai_report.executive_summary'
+curl http://localhost:8000/v1/audit/$JOB_ID | jq '.result.timing'
 ```
 
-## Output
+## API Response
 
-The tool outputs a single JSON object to stdout:
+Successful audits return a JSON response with the following structure:
 
 ```json
 {
@@ -165,31 +190,30 @@ This helps identify performance bottlenecks in the audit process.
 
 ```json
 {
+  "job_id": "abc123...",
   "status": "failed",
   "error": "Error message here"
 }
 ```
 
-### Validation Response
+### Job Status Response
 
-When using `--validate-only`, successful validation returns:
-
-```json
-{
-  "status": "success",
-  "message": "Validation successful",
-  "validated_url": "https://example.com"
-}
-```
-
-### Validation Errors
-
-Missing API keys or invalid inputs return structured errors:
+The `/v1/audit/{job_id}` endpoint returns job status:
 
 ```json
 {
-  "status": "failed",
-  "error": "Validation error: PSI_API_KEY environment variable is required and must be non-empty"
+  "job_id": "abc123...",
+  "status": "completed",
+  "url": "https://example.com",
+  "progress": {
+    "current_stage": "ai_analysis",
+    "completed_stages": ["lighthouse_mobile", "lighthouse_desktop", "crux"],
+    "pending_stages": []
+  },
+  "result": { /* full audit result */ },
+  "error": null,
+  "created_at": "2024-01-01T12:00:00Z",
+  "queue_position": null
 }
 ```
 
@@ -199,7 +223,7 @@ Audit results are automatically cached in SQLite (`audit_cache.db`) to improve p
 
 - **Automatic Caching**: Successful audits are cached for 24 hours (configurable)
 - **Cache TTL**: Set `CACHE_TTL_SECONDS` environment variable (default: 86400 = 1 day)
-- **Bypass Cache**: Use `--no-cache` flag to skip cache check and force fresh audit
+- **Bypass Cache**: Set `no_cache: true` in audit request to skip cache check and force fresh audit
 - **SHA256 Hashing**: URLs are hashed for efficient lookups and privacy
 - **Graceful Handling**: Cache corruption is automatically detected and database is recreated
 
@@ -207,24 +231,28 @@ Audit results are automatically cached in SQLite (`audit_cache.db`) to improve p
 
 ```bash
 # Use cached results (default behavior)
-uv run auditcli https://example.com
+curl -X POST http://localhost:8000/v1/audit \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}'
 
 # Force fresh audit, don't cache result
-uv run auditcli --no-cache https://example.com
+curl -X POST http://localhost:8000/v1/audit \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com", "no_cache": true}'
 
 # Check cache statistics
-uv run python -c "from src.cache import get_cache_stats; import json; print(json.dumps(get_cache_stats(), indent=2))"
+curl http://localhost:8000/v1/cache/stats
 ```
 
 ## Validation & Error Handling
 
-The CLI performs comprehensive validation:
+The API performs comprehensive validation:
 
-- **API Keys**: Validates presence and basic format of `GOOGLE_API_KEY` and `PSI_API_KEY`
+- **API Keys**: Validates presence and basic format of `GOOGLE_API_KEY` and `PSI_API_KEY` on startup
 - **URLs**: Normalizes URLs, enforces http/https protocols, validates domain format
-- **Pre-flight Check**: Use `--validate-only` to validate inputs without running expensive audits
 - **Graceful Degradation**: Partial failures return `status: "partial"` with available data
 - **Structured Errors**: All errors return consistent JSON format, never crash
+- **Rate Limiting**: Per-IP limits to prevent abuse
 
 ## Data Sources
 
@@ -268,9 +296,42 @@ AI-generated analysis including:
 - **Performance Monitoring**: Built-in timing and profiling for bottleneck identification
 - **Production Ready**: Configurable timeouts, environment variable validation, no crashes
 
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/v1/audit` | Create new audit job |
+| `GET` | `/v1/audit/{job_id}` | Get audit job status/results |
+| `DELETE` | `/v1/audit/{job_id}` | Cancel queued audit job |
+| `GET` | `/v1/audits/running` | List running/queued audits |
+| `GET` | `/v1/audits/stats` | System statistics |
+| `GET` | `/v1/cache/stats` | Cache statistics |
+| `POST` | `/v1/cache/cleanup` | Clean expired cache entries |
+| `DELETE` | `/v1/cache` | Clear all cache |
+| `WS` | `/v1/audit/{job_id}` | Real-time progress updates |
+| `GET` | `/v1/health` | Health check |
+| `GET` | `/v1/health/detailed` | Detailed health check |
+
 ## Integration
 
-For integrating with a SvelteKit application, see [SVELTEKIT_INTEGRATION.md](./SVELTEKIT_INTEGRATION.md).
+The API is designed for easy integration with:
+
+- **CI/CD pipelines**: Automated performance monitoring
+- **Monitoring systems**: Real-time performance tracking
+- **Web applications**: Frontend dashboards for performance insights
+- **Alerting systems**: Performance regression detection
+
+### WebSocket Progress Updates
+
+Connect to `/v1/audit/{job_id}` for real-time updates:
+
+```javascript
+const ws = new WebSocket('ws://localhost:8000/v1/audit/' + jobId);
+ws.onmessage = (event) => {
+  const update = JSON.parse(event.data);
+  console.log('Stage completed:', update.stage);
+};
+```
 
 ## Development
 
@@ -278,25 +339,29 @@ For integrating with a SvelteKit application, see [SVELTEKIT_INTEGRATION.md](./S
 # Run tests
 uv run python -m pytest tests/ -v
 
-# Test validation
-uv run auditcli --validate-only https://example.com
-uv run auditcli --validate-only invalid-url
+# Start development server
+uv run uvicorn app.main:app --reload
 
-# Test timeout and caching functionality
-uv run auditcli --timeout 30 --validate-only https://example.com  # Fast validation
-uv run auditcli --timeout 1200 https://example.com                # Extended timeout
-uv run auditcli --no-cache https://example.com                    # Skip cache
+# Test API endpoints
+curl http://localhost:8000/v1/health  # Health check
+curl http://localhost:8000/v1/cache/stats  # Cache statistics
+curl -X GET http://localhost:8000/v1/audits/running  # Running audits
 
-# Run a test audit
-uv run auditcli https://mounis.net | jq '.status'
+# Test audit creation
+curl -X POST http://localhost:8000/v1/audit \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com", "timeout": 300}'
 
 # Test error handling
-PSI_API_KEY="" uv run auditcli https://example.com
-uv run auditcli                           # Missing URL test
-uv run auditcli invalid://url             # Invalid URL test
+curl -X POST http://localhost:8000/v1/audit \
+  -H "Content-Type: application/json" \
+  -d '{"url": "invalid-url"}'  # Invalid URL test
 
-# Check performance timing
-uv run auditcli https://example.com | jq '.timing'
+# Check audit statistics
+curl http://localhost:8000/v1/audits/stats
+
+# View API documentation
+open http://localhost:8000/docs  # FastAPI auto-generated docs
 ```
 
 ## License

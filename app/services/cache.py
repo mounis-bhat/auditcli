@@ -129,7 +129,6 @@ def get_cached_result(url: str) -> Optional[Dict[str, Any]]:
         current_time = time.time()
 
         with sqlite3.connect(db_path) as conn:
-            conn.execute("PRAGMA journal_mode=WAL")
             cursor = conn.execute(
                 """
                 SELECT result_json, created_at, ttl_seconds

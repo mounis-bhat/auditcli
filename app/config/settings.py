@@ -7,9 +7,6 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
-# Load .env file once at module import
-load_dotenv()
-
 
 @dataclass(frozen=True)
 class Config:
@@ -60,6 +57,7 @@ def _get_default_cache_path() -> Path:
 
 def load_config() -> Config:
     """Load and validate configuration from environment."""
+    load_dotenv()
     cache_path_env = os.getenv("AUDIT_CACHE_PATH")
     cache_path = Path(cache_path_env) if cache_path_env else _get_default_cache_path()
 

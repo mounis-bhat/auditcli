@@ -14,7 +14,7 @@ from app.config.settings import get_config
 from app.errors.exceptions import APIError
 from app.schemas.audit import CrUXData, CrUXMetric, MetricDistribution
 from app.schemas.common import Rating
-from app.services.circuit_breaker import get_psi_circuit_breaker, CircuitState
+from app.services.circuit_breaker import get_psi_circuit_breaker
 
 PSI_API_URL = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
 
@@ -169,79 +169,6 @@ async def fetch_crux_async(url: str, timeout: float = 60.0) -> Optional[CrUXData
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.get(PSI_API_URL, params=params)
-            response.raise_for_status()
-            data = response.json()
-
-        # Record success
-        circuit_breaker.record_success()
-
-    except httpx.TimeoutException as e:
-        circuit_breaker.record_failure()
-        raise APIError(f"PSI API request timed out: {e}") from e
-    except httpx.HTTPStatusError as e:
-        circuit_breaker.record_failure()
-        raise APIError(f"PSI API returned error status {e.response.status_code}") from e
-    except httpx.RequestError as e:
-        circuit_breaker.record_failure()
-        raise APIError(f"Failed to connect to PSI API: {e}") from e
-    except Exception as e:
-        circuit_breaker.record_failure()
-        raise APIError(f"Failed to fetch CrUX data: {e}") from e
-
-    # Get loading experience data
-    loading_exp = _get_loading_experience(data)
-    if not loading_exp:
-        return None  # No data available, not an error
-
-    is_origin_fallback = data.get("loadingExperience") is None or not data.get(
-        "loadingExperience", {}
-    ).get("metrics")
-    metrics_data: Dict[str, Any] = loading_exp.get("metrics", {})
-
-    if not metrics_data:
-        return None  # No metrics data, not an error
-
-    return CrUXData(
-        lcp=_parse_metric(metrics_data, "LARGEST_CONTENTFUL_PAINT_MS", _rate_lcp),
-        cls=_parse_metric(metrics_data, "CUMULATIVE_LAYOUT_SHIFT_SCORE", _rate_cls),
-        inp=_parse_metric(metrics_data, "INTERACTION_TO_NEXT_PAINT", _rate_inp),
-        fcp=_parse_metric(metrics_data, "FIRST_CONTENTFUL_PAINT_MS"),
-        ttfb=_parse_metric(metrics_data, "EXPERIMENTAL_TIME_TO_FIRST_BYTE"),
-        origin_fallback=is_origin_fallback,
-        overall_rating=_parse_overall_rating(loading_exp.get("overall_category")),
-    )
-
-
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=4, max=10),
-    retry=retry_if_exception_type(APIError),
-)
-def fetch_crux(url: str, timeout: float = 60.0) -> Optional[CrUXData]:
-    """
-    Fetch CrUX field data from PageSpeed Insights API.
-
-    Returns None if no field data available or circuit is open.
-    Raises APIError on API failures (which triggers retry).
-    """
-    # Check circuit breaker before making request
-    circuit_breaker = get_psi_circuit_breaker()
-    if not circuit_breaker.can_execute():
-        # Circuit is open, fail fast
-        return None
-
-    config = get_config()
-
-    params: Dict[str, str] = {
-        "url": url,
-        "key": config.psi_api_key,
-        "strategy": "mobile",
-        "category": "performance",
-    }
-
-    try:
-        with httpx.Client(timeout=timeout) as client:
-            response = client.get(PSI_API_URL, params=params)
             response.raise_for_status()
             data = response.json()
 
