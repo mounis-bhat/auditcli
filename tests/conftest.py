@@ -1,6 +1,8 @@
 """Pytest fixtures for auditcli tests."""
 
 import os
+from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 
@@ -18,13 +20,13 @@ from app.services.queue import PersistentQueue
 
 
 @pytest.fixture(autouse=True, scope="function")
-def reset_singletons(tmp_path):
+def reset_singletons(tmp_path: Path) -> Generator[None]:
     """Reset all singleton instances for each test."""
     # Set env var for temp cache path
     os.environ["AUDIT_CACHE_PATH"] = str(tmp_path / "audit_cache.db")
 
     # Reset all singletons before test
-    JobStore._instance = None
+    JobStore._instance = None  # pyright: ignore[reportPrivateUsage]
     ConcurrencyManager.reset_instance()
     PersistentQueue.reset_instance()
     reset_config()
@@ -32,7 +34,7 @@ def reset_singletons(tmp_path):
     yield
 
     # Clean up after test
-    JobStore._instance = None
+    JobStore._instance = None  # pyright: ignore[reportPrivateUsage]
     ConcurrencyManager.reset_instance()
     PersistentQueue.reset_instance()
     reset_config()
@@ -40,15 +42,15 @@ def reset_singletons(tmp_path):
 
 # Also expose as non-autouse for explicit use
 @pytest.fixture(scope="function")
-def reset_singletons_explicit(tmp_path):
+def reset_singletons_explicit(tmp_path: Path) -> Generator[None]:
     """Explicitly reset singletons (autouse version exists too)."""
     os.environ["AUDIT_CACHE_PATH"] = str(tmp_path / "audit_cache.db")
-    JobStore._instance = None
+    JobStore._instance = None  # pyright: ignore[reportPrivateUsage]
     ConcurrencyManager.reset_instance()
     PersistentQueue.reset_instance()
     reset_config()
     yield
-    JobStore._instance = None
+    JobStore._instance = None  # pyright: ignore[reportPrivateUsage]
     ConcurrencyManager.reset_instance()
     PersistentQueue.reset_instance()
     reset_config()

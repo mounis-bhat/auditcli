@@ -157,7 +157,7 @@ def mock_ai_report():
 class TestAuditCreation:
     """Test audit job creation."""
 
-    def test_create_audit_valid_url(self, client):
+    def test_create_audit_valid_url(self, client: TestClient):
         """Test creating an audit with a valid URL."""
         response = client.post(
             "/v1/audit",
@@ -170,7 +170,7 @@ class TestAuditCreation:
         assert data["job_id"]
         assert data["message"]
 
-    def test_create_audit_invalid_url(self, client):
+    def test_create_audit_invalid_url(self, client: TestClient):
         """Test creating an audit with an invalid URL."""
         response = client.post(
             "/v1/audit",
@@ -179,12 +179,12 @@ class TestAuditCreation:
         )
         assert response.status_code in [400, 422]
 
-    def test_create_audit_missing_url(self, client):
+    def test_create_audit_missing_url(self, client: TestClient):
         """Test creating an audit without a URL."""
         response = client.post("/v1/audit", json={}, headers={"X-Forwarded-For": "127.0.0.1"})
         assert response.status_code in [400, 422]
 
-    def test_create_audit_empty_url(self, client):
+    def test_create_audit_empty_url(self, client: TestClient):
         """Test creating an audit with an empty URL."""
         response = client.post(
             "/v1/audit",
@@ -193,7 +193,7 @@ class TestAuditCreation:
         )
         assert response.status_code in [400, 422]
 
-    def test_create_audit_normalizes_url(self, client):
+    def test_create_audit_normalizes_url(self, client: TestClient):
         """Test that URL is normalized (protocol added if missing)."""
         response = client.post(
             "/v1/audit",
@@ -208,7 +208,7 @@ class TestAuditCreation:
 class TestAuditStatus:
     """Test audit status retrieval."""
 
-    def test_get_audit_status_pending(self, client):
+    def test_get_audit_status_pending(self, client: TestClient):
         """Test getting status of a pending audit."""
         # Create an audit
         create_response = client.post(
@@ -226,7 +226,7 @@ class TestAuditStatus:
         assert data["status"] == "pending"
         assert data["url"] == "https://example.com"
 
-    def test_get_audit_status_nonexistent(self, client):
+    def test_get_audit_status_nonexistent(self, client: TestClient):
         """Test getting status of a non-existent audit."""
         response = client.get("/v1/audit/nonexistent-job-id")
         assert response.status_code == 404
@@ -235,7 +235,7 @@ class TestAuditStatus:
 class TestAuditDeletion:
     """Test audit cancellation/deletion."""
 
-    def test_delete_pending_audit(self, client):
+    def test_delete_pending_audit(self, client: TestClient):
         """Test deleting a pending audit."""
         # Create an audit
         create_response = client.post(
@@ -251,7 +251,7 @@ class TestAuditDeletion:
         # Should return 400 because job is not QUEUED
         assert delete_response.status_code in [400, 404]
 
-    def test_delete_nonexistent_audit(self, client):
+    def test_delete_nonexistent_audit(self, client: TestClient):
         """Test deleting a non-existent audit."""
         response = client.delete("/v1/audit/nonexistent-job-id")
         assert response.status_code == 404
@@ -260,7 +260,7 @@ class TestAuditDeletion:
 class TestCacheEndpoints:
     """Test cache management endpoints."""
 
-    def test_get_cache_stats(self, client):
+    def test_get_cache_stats(self, client: TestClient):
         """Test getting cache statistics."""
         response = client.get("/v1/cache/stats")
         assert response.status_code == 200
@@ -270,12 +270,12 @@ class TestCacheEndpoints:
         # Ensure we get a dict with some cache info
         assert isinstance(data, dict)
 
-    def test_clear_cache(self, client):
+    def test_clear_cache(self, client: TestClient):
         """Test clearing the cache."""
         response = client.delete("/v1/cache")
         assert response.status_code == 200
 
-    def test_cleanup_cache(self, client):
+    def test_cleanup_cache(self, client: TestClient):
         """Test cleaning up expired cache entries."""
         response = client.post("/v1/cache/cleanup")
         assert response.status_code == 200
@@ -287,7 +287,7 @@ class TestCacheEndpoints:
 class TestAuditListingAndStats:
     """Test audit listing and statistics endpoints."""
 
-    def test_get_running_audits(self, client):
+    def test_get_running_audits(self, client: TestClient):
         """Test getting list of running/queued audits."""
         # Create a couple of audits
         client.post(
@@ -310,7 +310,7 @@ class TestAuditListingAndStats:
         items = data.get("job_ids", data.get("items", []))
         assert len(items) == 2
 
-    def test_get_audit_stats(self, client):
+    def test_get_audit_stats(self, client: TestClient):
         """Test getting audit statistics."""
         response = client.get("/v1/audits/stats")
         assert response.status_code == 200
@@ -327,7 +327,7 @@ class TestAuditListingAndStats:
 class TestHealthEndpoint:
     """Test health check endpoint."""
 
-    def test_health_check(self, client):
+    def test_health_check(self, client: TestClient):
         """Test health check endpoint."""
         response = client.get("/v1/health")
         assert response.status_code == 200
@@ -336,7 +336,7 @@ class TestHealthEndpoint:
         assert data["status"] in ["healthy", "degraded", "unhealthy"]
         # Response may have 'timestamp', 'checks', or nested structure
 
-    def test_health_check_structure(self, client):
+    def test_health_check_structure(self, client: TestClient):
         """Test that health check has proper structure."""
         response = client.get("/v1/health")
         data = response.json()
@@ -350,7 +350,7 @@ class TestHealthEndpoint:
 class TestRootEndpoint:
     """Test root endpoint."""
 
-    def test_root_endpoint(self, client):
+    def test_root_endpoint(self, client: TestClient):
         """Test that root endpoint returns API info."""
         response = client.get("/")
         assert response.status_code == 200

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.services.concurrency import ConcurrencyManager, ConcurrencyStats
 
 
@@ -118,7 +120,7 @@ class TestQueueOperations:
     def test_enqueue_with_options(self):
         """Test enqueuing a job with options."""
         manager = ConcurrencyManager.get_instance()
-        options = {"timeout": 300, "no_cache": True}
+        options: dict[str, Any] = {"timeout": 300, "no_cache": True}
         position = manager.enqueue_job("job_opts_test", "https://example.com", options)
         assert position is not None
 
