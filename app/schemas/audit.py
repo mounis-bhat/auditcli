@@ -1,11 +1,8 @@
 """Audit-related Pydantic schemas."""
 
-from typing import Dict, Optional
-
 from pydantic import BaseModel
 
 from app.schemas.common import Rating, Status
-
 
 # === Lighthouse Models ===
 
@@ -22,10 +19,10 @@ class CategoryScores(BaseModel):
 class CoreWebVitals(BaseModel):
     """Core Web Vitals from Lighthouse."""
 
-    lcp_ms: Optional[float] = None
-    cls: Optional[float] = None
-    inp_ms: Optional[float] = None
-    tbt_ms: Optional[float] = None
+    lcp_ms: float | None = None
+    cls: float | None = None
+    inp_ms: float | None = None
+    tbt_ms: float | None = None
 
 
 class Opportunity(BaseModel):
@@ -34,7 +31,7 @@ class Opportunity(BaseModel):
     id: str
     title: str
     description: str
-    estimated_savings_ms: Optional[float] = None
+    estimated_savings_ms: float | None = None
 
 
 class LighthouseMetrics(BaseModel):
@@ -48,8 +45,8 @@ class LighthouseMetrics(BaseModel):
 class LighthouseReport(BaseModel):
     """Lighthouse reports for mobile and desktop."""
 
-    mobile: Optional[LighthouseMetrics] = None
-    desktop: Optional[LighthouseMetrics] = None
+    mobile: LighthouseMetrics | None = None
+    desktop: LighthouseMetrics | None = None
 
 
 # === CrUX Models ===
@@ -66,21 +63,21 @@ class MetricDistribution(BaseModel):
 class CrUXMetric(BaseModel):
     """A single CrUX metric."""
 
-    p75: Optional[float] = None
-    distribution: Optional[MetricDistribution] = None
-    rating: Optional[Rating] = None
+    p75: float | None = None
+    distribution: MetricDistribution | None = None
+    rating: Rating | None = None
 
 
 class CrUXData(BaseModel):
     """Chrome User Experience Report field data."""
 
-    lcp: Optional[CrUXMetric] = None
-    cls: Optional[CrUXMetric] = None
-    inp: Optional[CrUXMetric] = None
-    fcp: Optional[CrUXMetric] = None
-    ttfb: Optional[CrUXMetric] = None
+    lcp: CrUXMetric | None = None
+    cls: CrUXMetric | None = None
+    inp: CrUXMetric | None = None
+    fcp: CrUXMetric | None = None
+    ttfb: CrUXMetric | None = None
     origin_fallback: bool = False
-    overall_rating: Optional[Rating] = None
+    overall_rating: Rating | None = None
 
 
 # === AI Report Models ===
@@ -156,7 +153,7 @@ class Insights(BaseModel):
     """Combined insights with metrics and AI report."""
 
     metrics: LighthouseReport
-    ai_report: Optional[AIReport] = None
+    ai_report: AIReport | None = None
 
 
 class AuditResponse(BaseModel):
@@ -165,10 +162,10 @@ class AuditResponse(BaseModel):
     status: Status
     url: str
     lighthouse: LighthouseReport
-    crux: Optional[CrUXData] = None
+    crux: CrUXData | None = None
     insights: Insights
-    error: Optional[str] = None
-    timing: Optional[Dict[str, float]] = None  # Performance profiling data
+    error: str | None = None
+    timing: dict[str, float] | None = None  # Performance profiling data
 
 
 # === Request Models ===
@@ -178,5 +175,5 @@ class AuditRequest(BaseModel):
     """Request model for audit endpoint."""
 
     url: str
-    timeout: Optional[int] = 600
-    no_cache: Optional[bool] = False
+    timeout: int | None = 600
+    no_cache: bool | None = False

@@ -1,7 +1,8 @@
 """Tests for WebSocket functionality."""
 
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 from app.services.websocket import WebSocketManager
 

@@ -1,7 +1,7 @@
 """AI report generation using Gemini."""
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any
 
 from google import genai
 from google.genai import types
@@ -55,36 +55,36 @@ Context for Core Web Vitals thresholds:
 
 Category score interpretation (0-1 scale):
 - 0.9-1.0: Excellent
-- 0.5-0.89: Needs Improvement  
+- 0.5-0.89: Needs Improvement
 - 0-0.49: Poor
 
 Required output JSON schema:
 {{
   "executive_summary": "A comprehensive 3-4 paragraph summary covering: 1) Overall website health and key findings, 2) Critical issues requiring immediate attention, 3) Business impact of current performance, 4) High-level improvement roadmap",
-  
+
   "performance_analysis": {{
     "mobile_summary": "2-3 paragraph detailed analysis of mobile performance including all category scores, Core Web Vitals interpretation, and comparison to industry standards",
     "desktop_summary": "2-3 paragraph detailed analysis of desktop performance including all category scores, Core Web Vitals interpretation, and comparison to industry standards",
     "mobile_vs_desktop": "1-2 paragraph comparison explaining the performance gap between mobile and desktop, why it matters, and which platform needs more attention"
   }},
-  
+
   "core_web_vitals_analysis": {{
     "lcp_analysis": "Detailed analysis of LCP performance on both platforms, what's causing issues (if any), and impact on user experience",
     "cls_analysis": "Detailed analysis of CLS performance on both platforms, what it means for visual stability",
     "inp_tbt_analysis": "Detailed analysis of interactivity metrics (INP/TBT), what they mean for user responsiveness"
   }},
-  
+
   "category_insights": {{
     "performance": "Analysis of the performance score and what it indicates about page speed and optimization",
     "accessibility": "Analysis of accessibility score and its importance for inclusive web experience and legal compliance",
     "best_practices": "Analysis of best practices score covering security, modern web standards, and code quality",
     "seo": "Analysis of SEO score and its impact on search engine visibility and organic traffic"
   }},
-  
+
   "strengths": ["List 3-5 specific strengths with context about why they matter"],
-  
+
   "weaknesses": ["List 3-5 specific weaknesses with quantified impact where possible"],
-  
+
   "opportunities": [
     {{
       "title": "Opportunity title",
@@ -95,7 +95,7 @@ Required output JSON schema:
       "business_impact": "How this affects users, conversions, or SEO"
     }}
   ],
-  
+
   "recommendations": [
     {{
       "priority": 1,
@@ -107,17 +107,17 @@ Required output JSON schema:
       "quick_win": true or false
     }}
   ],
-  
+
   "business_impact_summary": "2-3 paragraph analysis of how current performance affects: 1) User experience and engagement, 2) Search engine rankings and organic traffic, 3) Conversion rates and revenue potential, 4) Brand perception and trust",
-  
+
   "next_steps": ["List of 5-7 immediate, actionable next steps in priority order"]
 }}
 """
 
 
 def _build_ai_input(
-    url: str, lighthouse: LighthouseReport, crux: Optional[CrUXData]
-) -> Dict[str, Any]:
+    url: str, lighthouse: LighthouseReport, crux: CrUXData | None
+) -> dict[str, Any]:
     """Build input data for AI analysis."""
     return {
         "url": url,
@@ -134,9 +134,9 @@ def _build_ai_input(
 def generate_ai_report(
     url: str,
     lighthouse: LighthouseReport,
-    crux: Optional[CrUXData],
+    crux: CrUXData | None,
     timeout: float = 300.0,
-) -> Optional[AIReport]:
+) -> AIReport | None:
     """
     Generate AI analysis report using Gemini.
 
@@ -157,9 +157,7 @@ def generate_ai_report(
     try:
         client = genai.Client(api_key=api_key)
 
-        prompt = USER_PROMPT_TEMPLATE.format(
-            input_json=json.dumps(input_data, indent=2)
-        )
+        prompt = USER_PROMPT_TEMPLATE.format(input_json=json.dumps(input_data, indent=2))
 
         response = client.models.generate_content(  # type: ignore
             model="gemini-2.5-flash",

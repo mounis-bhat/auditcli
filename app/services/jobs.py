@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any
 
@@ -38,7 +38,7 @@ class Job:
     completed_stages: list[AuditStage] = field(default_factory=_default_completed_stages)
     result: dict[str, Any] | None = None  # Will hold AuditResponse dict
     error: str | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     queue_position: int | None = None  # Position in queue if status is QUEUED
 
 
@@ -162,7 +162,7 @@ class JobStore:
 
     def cleanup_expired(self) -> None:
         with self._lock:
-            expiry_time = datetime.now(timezone.utc) - timedelta(hours=24)
+            expiry_time = datetime.now(UTC) - timedelta(hours=24)
             expired_ids = [
                 job_id for job_id, job in self.jobs.items() if job.created_at < expiry_time
             ]

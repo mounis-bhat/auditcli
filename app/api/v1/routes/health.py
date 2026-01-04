@@ -1,6 +1,6 @@
 """Health check endpoints with database connectivity verification."""
 
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter
 
@@ -11,7 +11,7 @@ router = APIRouter()
 
 
 @router.get("/health")
-async def health_check() -> Dict[str, Any]:
+async def health_check() -> dict[str, Any]:
     """
     Comprehensive health check endpoint.
 
@@ -44,9 +44,7 @@ async def health_check() -> Dict[str, Any]:
     is_ready = db_status["connected"]
 
     # Check if any circuit breakers are open (degraded state)
-    circuits_open = any(
-        stats.state.value == "open" for stats in circuit_breakers.values()
-    )
+    circuits_open = any(stats.state.value == "open" for stats in circuit_breakers.values())
 
     # If database is not connected, raise 503 (maintaining readiness probe behavior)
     if not is_ready:

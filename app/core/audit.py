@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from app.core.ai import generate_ai_report
 from app.core.lighthouse import run_lighthouse_parallel

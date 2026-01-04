@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import AsyncIterator, Dict, List, Optional
+from datetime import UTC, datetime
 
 from playwright.async_api import Browser, Playwright, async_playwright
 
@@ -24,7 +24,7 @@ class BrowserInstance:
     browser: Browser
     cdp_port: int
     in_use: bool = False
-    last_used: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_used: datetime = field(default_factory=lambda: datetime.now(UTC))
     use_count: int = 0
 
     def mark_in_use(self) -> None:
@@ -35,7 +35,7 @@ class BrowserInstance:
     def mark_available(self) -> None:
         """Mark browser as available."""
         self.in_use = False
-        self.last_used = datetime.now(timezone.utc)
+        self.last_used = datetime.now(UTC)
 
 
 class BrowserPool:
@@ -46,7 +46,7 @@ class BrowserPool:
     ports that Lighthouse can connect to.
     """
 
-    _instance: Optional["BrowserPool"] = None
+    _instance: BrowserPool | None = None
     _lock = threading.Lock()
 
     def __init__(
@@ -59,16 +59,16 @@ class BrowserPool:
         self.launch_timeout = launch_timeout
         self.idle_timeout = idle_timeout
 
-        self._playwright: Optional[Playwright] = None
-        self._browsers: List[BrowserInstance] = []
+        self._playwright: Playwright | None = None
+        self._browsers: list[BrowserInstance] = []
         self._pool_lock = asyncio.Lock()
-        self._semaphore: Optional[asyncio.Semaphore] = None
+        self._semaphore: asyncio.Semaphore | None = None
         self._next_port = 9222  # Starting CDP port
         self._initialized = False
         self._shutting_down = False
 
     @classmethod
-    def get_instance(cls) -> "BrowserPool":
+    def get_instance(cls) -> BrowserPool:
         """Get or create the singleton browser pool."""
         with cls._lock:
             if cls._instance is None:
@@ -98,9 +98,7 @@ class BrowserPool:
             self._playwright = await async_playwright().start()
             self._semaphore = asyncio.Semaphore(self.pool_size)
             self._initialized = True
-            logger.info(
-                f"Browser pool initialized with capacity for {self.pool_size} browsers"
-            )
+            logger.info(f"Browser pool initialized with capacity for {self.pool_size} browsers")
 
     async def _create_browser(self) -> BrowserInstance:
         """Create a new browser instance with CDP enabled."""
@@ -130,7 +128,7 @@ class BrowserPool:
         logger.info(f"Created new browser instance on CDP port {port}")
         return instance
 
-    async def _get_available_browser(self) -> Optional[BrowserInstance]:
+    async def _get_available_browser(self) -> BrowserInstance | None:
         """Get an available browser from the pool."""
         for instance in self._browsers:
             if not instance.in_use:
@@ -140,9 +138,7 @@ class BrowserPool:
                     return instance
                 else:
                     # Browser disconnected, remove it
-                    logger.warning(
-                        f"Browser on port {instance.cdp_port} disconnected, removing"
-                    )
+                    logger.warning(f"Browser on port {instance.cdp_port} disconnected, removing")
                     self._browsers.remove(instance)
         return None
 
@@ -165,7 +161,7 @@ class BrowserPool:
         # Wait for a slot in the pool
         await self._semaphore.acquire()
 
-        instance: Optional[BrowserInstance] = None
+        instance: BrowserInstance | None = None
         try:
             async with self._pool_lock:
                 # Try to get an existing available browser
@@ -213,11 +209,11 @@ class BrowserPool:
 
         Returns the number of browsers closed.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         closed_count = 0
 
         async with self._pool_lock:
-            to_remove: List[BrowserInstance] = []
+            to_remove: list[BrowserInstance] = []
             for instance in self._browsers:
                 if not instance.in_use:
                     idle_seconds = (now - instance.last_used).total_seconds()
@@ -239,7 +235,7 @@ class BrowserPool:
 
         return closed_count
 
-    def get_stats(self) -> Dict[str, int]:
+    def get_stats(self) -> dict[str, int]:
         """Get current pool statistics."""
         active = sum(1 for b in self._browsers if b.in_use)
         idle = sum(1 for b in self._browsers if not b.in_use)

@@ -1,6 +1,7 @@
 """PSI/CrUX fetcher - fetches real user metrics from PageSpeed Insights."""
 
-from typing import Any, Callable, Dict, List, Optional, cast
+from collections.abc import Callable
+from typing import Any, cast
 
 import httpx
 from tenacity import (
@@ -49,7 +50,7 @@ def _rate_inp(inp_ms: float) -> Rating:
 # === Type-safe helpers ===
 
 
-def _safe_float(value: Any) -> Optional[float]:
+def _safe_float(value: Any) -> float | None:
     """Safely convert value to float or None."""
     if value is None:
         return None
@@ -61,14 +62,14 @@ def _safe_float(value: Any) -> Optional[float]:
 # === Parsing Functions ===
 
 
-def _parse_distribution(data: Dict[str, Any]) -> Optional[MetricDistribution]:
+def _parse_distribution(data: dict[str, Any]) -> MetricDistribution | None:
     """Parse distribution buckets from PSI response."""
     raw_distributions = data.get("distributions")
     if raw_distributions is None:
         return None
 
     # Cast to typed list for proper type inference
-    distributions = cast(List[Dict[str, Any]], raw_distributions)
+    distributions = cast(list[dict[str, Any]], raw_distributions)
     if len(distributions) < 3:
         return None
 
@@ -80,10 +81,10 @@ def _parse_distribution(data: Dict[str, Any]) -> Optional[MetricDistribution]:
 
 
 def _parse_metric(
-    data: Dict[str, Any],
+    data: dict[str, Any],
     metric_key: str,
-    rate_func: Optional[Callable[[float], Rating]] = None,
-) -> Optional[CrUXMetric]:
+    rate_func: Callable[[float], Rating] | None = None,
+) -> CrUXMetric | None:
     """Parse a single CrUX metric from PSI response."""
     metric_data = data.get(metric_key)
     if not metric_data:
@@ -104,11 +105,11 @@ def _parse_metric(
     )
 
 
-def _parse_overall_rating(category: Optional[str]) -> Optional[Rating]:
+def _parse_overall_rating(category: str | None) -> Rating | None:
     """Parse overall category to rating."""
     if not category:
         return None
-    category_map: Dict[str, Rating] = {
+    category_map: dict[str, Rating] = {
         "FAST": Rating.GOOD,
         "AVERAGE": Rating.NEEDS_IMPROVEMENT,
         "SLOW": Rating.POOR,
@@ -116,7 +117,7 @@ def _parse_overall_rating(category: Optional[str]) -> Optional[Rating]:
     return category_map.get(category)
 
 
-def _get_loading_experience(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _get_loading_experience(data: dict[str, Any]) -> dict[str, Any] | None:
     """
     Get loading experience data, preferring URL-specific over origin fallback.
 
@@ -125,14 +126,14 @@ def _get_loading_experience(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     # Try URL-specific data first
     loading_exp = data.get("loadingExperience")
     if loading_exp and isinstance(loading_exp, dict):
-        loading_exp_typed = cast(Dict[str, Any], loading_exp)
+        loading_exp_typed = cast(dict[str, Any], loading_exp)
         if loading_exp_typed.get("metrics"):
             return loading_exp_typed
 
     # Fall back to origin data
     origin_exp = data.get("originLoadingExperience")
     if origin_exp and isinstance(origin_exp, dict):
-        origin_exp_typed = cast(Dict[str, Any], origin_exp)
+        origin_exp_typed = cast(dict[str, Any], origin_exp)
         if origin_exp_typed.get("metrics"):
             return origin_exp_typed
 
@@ -144,7 +145,7 @@ def _get_loading_experience(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     wait=wait_exponential(multiplier=1, min=4, max=10),
     retry=retry_if_exception_type(APIError),
 )
-async def fetch_crux_async(url: str, timeout: float = 60.0) -> Optional[CrUXData]:
+async def fetch_crux_async(url: str, timeout: float = 60.0) -> CrUXData | None:
     """
     Async version of fetch_crux - fetches CrUX field data from PageSpeed Insights API.
 
@@ -159,7 +160,7 @@ async def fetch_crux_async(url: str, timeout: float = 60.0) -> Optional[CrUXData
 
     config = get_config()
 
-    params: Dict[str, str] = {
+    params: dict[str, str] = {
         "url": url,
         "key": config.psi_api_key,
         "strategy": "mobile",
@@ -196,7 +197,7 @@ async def fetch_crux_async(url: str, timeout: float = 60.0) -> Optional[CrUXData
     is_origin_fallback = data.get("loadingExperience") is None or not data.get(
         "loadingExperience", {}
     ).get("metrics")
-    metrics_data: Dict[str, Any] = loading_exp.get("metrics", {})
+    metrics_data: dict[str, Any] = loading_exp.get("metrics", {})
 
     if not metrics_data:
         return None  # No metrics data, not an error

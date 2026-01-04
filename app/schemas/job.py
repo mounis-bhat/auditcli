@@ -1,15 +1,15 @@
-from pydantic import BaseModel
-from typing import Optional, List
 from datetime import datetime
 
+from pydantic import BaseModel
+
 from app.schemas.audit import AuditResponse
-from app.services.jobs import JobStatus, AuditStage
+from app.services.jobs import AuditStage, JobStatus
 
 
 class JobProgress(BaseModel):
-    current_stage: Optional[AuditStage] = None
-    completed_stages: List[AuditStage] = []
-    pending_stages: List[AuditStage] = []
+    current_stage: AuditStage | None = None
+    completed_stages: list[AuditStage] = []
+    pending_stages: list[AuditStage] = []
 
 
 class JobCreateResponse(BaseModel):
@@ -23,14 +23,14 @@ class JobStatusResponse(BaseModel):
     status: JobStatus
     url: str
     progress: JobProgress
-    result: Optional[AuditResponse] = None  # Full AuditResponse when complete
-    error: Optional[str] = None
+    result: AuditResponse | None = None  # Full AuditResponse when complete
+    error: str | None = None
     created_at: datetime
-    queue_position: Optional[int] = None  # Position in queue if status is QUEUED
+    queue_position: int | None = None  # Position in queue if status is QUEUED
 
 
 class PaginatedJobIds(BaseModel):
-    items: List[str]
+    items: list[str]
     total: int
     page: int
     per_page: int

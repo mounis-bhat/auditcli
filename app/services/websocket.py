@@ -2,8 +2,9 @@
 
 import asyncio
 import threading
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
+from datetime import UTC, datetime
+from typing import Any
+
 from fastapi import WebSocket
 
 
@@ -14,8 +15,8 @@ class WebSocketManager:
     _lock = threading.Lock()
 
     def __init__(self):
-        self.connections: Dict[str, List[WebSocket]] = {}
-        self.broadcast_queue: asyncio.Queue[Tuple[str, str, int, str]] = asyncio.Queue()
+        self.connections: dict[str, list[WebSocket]] = {}
+        self.broadcast_queue: asyncio.Queue[tuple[str, str, int, str]] = asyncio.Queue()
         self._broadcast_task: asyncio.Task[None] | None = None
         self.loop: asyncio.AbstractEventLoop | None = None
 
@@ -48,9 +49,7 @@ class WebSocketManager:
                 if not self.connections[job_id]:
                     del self.connections[job_id]
 
-    def enqueue_broadcast(
-        self, job_id: str, stage: str, progress: int, status: str
-    ) -> None:
+    def enqueue_broadcast(self, job_id: str, stage: str, progress: int, status: str) -> None:
         """Enqueue a broadcast message to be sent asynchronously."""
         if self.loop and self.loop.is_running():
             # Schedule in the main event loop from any context
@@ -60,16 +59,12 @@ class WebSocketManager:
         else:
             # Fallback: try create_task if we're in an async context
             try:
-                asyncio.create_task(
-                    self._enqueue_async(job_id, stage, progress, status)
-                )
+                asyncio.create_task(self._enqueue_async(job_id, stage, progress, status))
             except RuntimeError:
                 # No event loop, discard (shouldn't happen if loop is set)
                 pass
 
-    async def _enqueue_async(
-        self, job_id: str, stage: str, progress: int, status: str
-    ) -> None:
+    async def _enqueue_async(self, job_id: str, stage: str, progress: int, status: str) -> None:
         """Async helper to enqueue broadcast."""
         await self.broadcast_queue.put((job_id, stage, progress, status))
         if self._broadcast_task is None or self._broadcast_task.done():
@@ -83,7 +78,7 @@ class WebSocketManager:
                     self.broadcast_queue.get(), timeout=1.0
                 )
                 await self.broadcast(job_id, stage, progress, status)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # No more items, check if we should stop
                 if self.broadcast_queue.empty():
                     break
@@ -91,19 +86,17 @@ class WebSocketManager:
                 # Log error but continue
                 continue
 
-    async def broadcast(
-        self, job_id: str, stage: str, progress: int, status: str
-    ) -> None:
+    async def broadcast(self, job_id: str, stage: str, progress: int, status: str) -> None:
         """Broadcast status update to all connected clients for a job."""
-        message: Dict[str, Any] = {
+        message: dict[str, Any] = {
             "stage": stage,
             "progress": progress,
             "status": status,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         with self._lock:
             if job_id in self.connections:
-                disconnected: List[WebSocket] = []
+                disconnected: list[WebSocket] = []
                 for websocket in self.connections[job_id]:
                     try:
                         await websocket.send_json(message)

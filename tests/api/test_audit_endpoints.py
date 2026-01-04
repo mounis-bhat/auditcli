@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -13,23 +10,19 @@ from app.schemas.audit import (
     AIOpportunity,
     AIRecommendation,
     AIReport,
-    AuditResponse,
     CategoryInsights,
     CategoryScores,
     CoreWebVitals,
     CoreWebVitalsAnalysis,
     CrUXData,
     CrUXMetric,
-    Insights,
     LighthouseMetrics,
     LighthouseReport,
     MetricDistribution,
     Opportunity,
     PerformanceAnalysis,
 )
-from app.schemas.common import Rating, Status
-from app.services.concurrency import ConcurrencyManager
-from app.services.jobs import JobStore
+from app.schemas.common import Rating
 
 
 @pytest.fixture

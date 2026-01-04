@@ -4,7 +4,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Optional, TypeVar
+from typing import Optional, TypeVar
 
 T = TypeVar("T")
 
@@ -34,8 +34,8 @@ class CircuitBreakerStats:
     state: CircuitState
     failure_count: int
     success_count: int
-    last_failure_time: Optional[float]
-    last_success_time: Optional[float]
+    last_failure_time: float | None
+    last_success_time: float | None
     total_calls: int
     total_failures: int
     total_successes: int
@@ -75,8 +75,8 @@ class CircuitBreaker:
     _failure_count: int = field(default=0, init=False)
     _success_count: int = field(default=0, init=False)
     _half_open_calls: int = field(default=0, init=False)
-    _last_failure_time: Optional[float] = field(default=None, init=False)
-    _last_success_time: Optional[float] = field(default=None, init=False)
+    _last_failure_time: float | None = field(default=None, init=False)
+    _last_success_time: float | None = field(default=None, init=False)
     _state_changed_at: float = field(default_factory=time.time, init=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
 
@@ -201,7 +201,7 @@ class CircuitBreakerRegistry:
     _lock: threading.Lock = threading.Lock()
 
     def __init__(self) -> None:
-        self._breakers: Dict[str, CircuitBreaker] = {}
+        self._breakers: dict[str, CircuitBreaker] = {}
         self._breaker_lock = threading.Lock()
 
     @classmethod
@@ -214,7 +214,7 @@ class CircuitBreakerRegistry:
         return cls._instance
 
     def get_or_create(
-        self, name: str, config: Optional[CircuitBreakerConfig] = None
+        self, name: str, config: CircuitBreakerConfig | None = None
     ) -> CircuitBreaker:
         """Get an existing circuit breaker or create a new one."""
         with self._breaker_lock:
@@ -224,17 +224,15 @@ class CircuitBreakerRegistry:
                 )
             return self._breakers[name]
 
-    def get(self, name: str) -> Optional[CircuitBreaker]:
+    def get(self, name: str) -> CircuitBreaker | None:
         """Get a circuit breaker by name, or None if not found."""
         with self._breaker_lock:
             return self._breakers.get(name)
 
-    def get_all_stats(self) -> Dict[str, CircuitBreakerStats]:
+    def get_all_stats(self) -> dict[str, CircuitBreakerStats]:
         """Get statistics for all circuit breakers."""
         with self._breaker_lock:
-            return {
-                name: breaker.get_stats() for name, breaker in self._breakers.items()
-            }
+            return {name: breaker.get_stats() for name, breaker in self._breakers.items()}
 
     def reset_all(self) -> None:
         """Reset all circuit breakers to closed state."""
@@ -252,14 +250,12 @@ class CircuitBreakerRegistry:
 
 
 # Convenience functions for global access
-def get_circuit_breaker(
-    name: str, config: Optional[CircuitBreakerConfig] = None
-) -> CircuitBreaker:
+def get_circuit_breaker(name: str, config: CircuitBreakerConfig | None = None) -> CircuitBreaker:
     """Get or create a circuit breaker by name."""
     return CircuitBreakerRegistry.get_instance().get_or_create(name, config)
 
 
-def get_all_circuit_breaker_stats() -> Dict[str, CircuitBreakerStats]:
+def get_all_circuit_breaker_stats() -> dict[str, CircuitBreakerStats]:
     """Get statistics for all registered circuit breakers."""
     return CircuitBreakerRegistry.get_instance().get_all_stats()
 

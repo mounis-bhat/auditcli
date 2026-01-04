@@ -61,9 +61,9 @@ class TestParsing:
         assert dist is None
 
     def test_parse_metric(self):
-        from typing import Any, Dict
+        from typing import Any
 
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "LARGEST_CONTENTFUL_PAINT_MS": {
                 "percentile": 2500,
                 "distributions": [

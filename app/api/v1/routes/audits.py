@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional, Dict, Any
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from app.api.v1.deps import get_job_store, get_concurrency_manager, get_browser_pool
+from app.api.v1.deps import get_browser_pool, get_concurrency_manager, get_job_store
 from app.core.audit import run_audit_async
 from app.errors.exceptions import ValidationError
 from app.schemas.audit import AuditRequest, AuditResponse
@@ -18,9 +18,9 @@ from app.schemas.job import (
     JobStatusResponse,
     PaginatedJobIds,
 )
-from app.services.jobs import JobStore, JobStatus, AuditStage
-from app.services.concurrency import ConcurrencyManager
 from app.services.browser_pool import BrowserPool
+from app.services.concurrency import ConcurrencyManager
+from app.services.jobs import AuditStage, JobStatus, JobStore
 from app.services.validators import validate_url
 
 logger = logging.getLogger(__name__)
@@ -197,9 +197,7 @@ async def create_audit(
                 )
 
             # Update job status to QUEUED
-            job_store.update_job_status_and_position(
-                job_id, JobStatus.QUEUED, queue_position
-            )
+            job_store.update_job_status_and_position(job_id, JobStatus.QUEUED, queue_position)
 
             return JobCreateResponse(
                 job_id=job_id,
@@ -232,7 +230,7 @@ async def get_audit_status(
         raise HTTPException(status_code=404, detail="Job not found or expired")
 
     # Update queue position if still queued
-    queue_position: Optional[int] = None
+    queue_position: int | None = None
     if job.status == JobStatus.QUEUED:
         queue_position = concurrency_manager.get_queue_position(job_id)
         # Update stored position
@@ -275,7 +273,7 @@ async def cancel_audit(
     job_id: str,
     job_store: JobStore = Depends(get_job_store),
     concurrency_manager: ConcurrencyManager = Depends(get_concurrency_manager),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Cancel a queued audit job.
 
@@ -331,7 +329,7 @@ async def get_running_audits(
 async def get_audit_stats(
     concurrency_manager: ConcurrencyManager = Depends(get_concurrency_manager),
     browser_pool: BrowserPool = Depends(get_browser_pool),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get current audit system statistics.
 

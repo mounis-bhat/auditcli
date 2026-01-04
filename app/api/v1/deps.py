@@ -1,9 +1,9 @@
 """API dependencies for dependency injection."""
 
 from app.config.settings import Config, get_config
-from app.services.jobs import JobStore
-from app.services.concurrency import ConcurrencyManager
 from app.services.browser_pool import BrowserPool
+from app.services.concurrency import ConcurrencyManager
+from app.services.jobs import JobStore
 
 
 def get_settings() -> Config:

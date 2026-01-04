@@ -1,6 +1,6 @@
 """WebSocket endpoint for real-time audit status updates."""
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from app.api.v1.deps import get_job_store
 from app.services.jobs import JobStore

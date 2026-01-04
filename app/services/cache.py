@@ -8,7 +8,7 @@ import sqlite3
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from app.config.settings import get_config
 
@@ -19,7 +19,7 @@ _cache_initialized = False
 _cache_lock = threading.Lock()
 
 # URL locks to prevent duplicate concurrent audits
-_url_locks: Dict[str, asyncio.Lock] = {}
+_url_locks: dict[str, asyncio.Lock] = {}
 _url_locks_lock = threading.Lock()
 
 # Cache metrics
@@ -120,7 +120,7 @@ def _increment_metric(metric: str, value: int = 1) -> None:
         _cache_metrics[metric] = _cache_metrics.get(metric, 0) + value
 
 
-def get_cached_result(url: str) -> Optional[Dict[str, Any]]:
+def get_cached_result(url: str) -> dict[str, Any] | None:
     """
     Get cached audit result for URL if it exists and hasn't expired.
 
@@ -161,7 +161,7 @@ def get_cached_result(url: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def store_result(url: str, result: Dict[str, Any]) -> None:
+def store_result(url: str, result: dict[str, Any]) -> None:
     """
     Store audit result in cache with TTL.
 
@@ -257,7 +257,7 @@ def cleanup_expired() -> int:
         return 0
 
 
-def get_cache_stats() -> Dict[str, Any]:
+def get_cache_stats() -> dict[str, Any]:
     """Get cache statistics including hit/miss rates."""
     try:
         db_path = _ensure_cache_initialized()
@@ -419,7 +419,7 @@ def cleanup_url_locks() -> int:
     return removed
 
 
-def check_database_connection() -> Dict[str, Any]:
+def check_database_connection() -> dict[str, Any]:
     """
     Check if the cache database is accessible and healthy.
 

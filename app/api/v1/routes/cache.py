@@ -1,21 +1,22 @@
 """Cache management routes."""
 
-from fastapi import APIRouter
-from typing import Dict, Any
+from typing import Any
 
-from app.services.cache import clear_cache, cleanup_expired, get_cache_stats
+from fastapi import APIRouter
+
+from app.services.cache import cleanup_expired, clear_cache, get_cache_stats
 
 router: APIRouter = APIRouter()
 
 
 @router.get("/cache/stats")
-async def get_cache_stats_endpoint() -> Dict[str, Any]:
+async def get_cache_stats_endpoint() -> dict[str, Any]:
     """Get cache statistics."""
     return get_cache_stats()
 
 
 @router.post("/cache/cleanup")
-async def cleanup_expired_cache_endpoint() -> Dict[str, Any]:
+async def cleanup_expired_cache_endpoint() -> dict[str, Any]:
     """Remove expired entries from cache."""
     removed_count = cleanup_expired()
     return {
@@ -25,7 +26,7 @@ async def cleanup_expired_cache_endpoint() -> Dict[str, Any]:
 
 
 @router.delete("/cache")
-async def clear_cache_endpoint() -> Dict[str, str]:
+async def clear_cache_endpoint() -> dict[str, str]:
     """Clear all cache entries."""
     clear_cache()
     return {"message": "Cache cleared successfully"}
