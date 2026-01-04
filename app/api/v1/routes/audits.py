@@ -335,10 +335,27 @@ async def get_audit_stats(
     """
     Get current audit system statistics.
 
-    Returns concurrency stats, queue stats, and browser pool stats.
+    Returns concurrency stats, queue stats, browser pool stats,
+    cache metrics, and circuit breaker states.
     """
+    from app.services.cache import get_cache_stats
+    from app.services.circuit_breaker import get_all_circuit_breaker_stats
+
     concurrency_stats = concurrency_manager.get_stats()
     browser_stats = browser_pool.get_stats()
+    cache_stats = get_cache_stats()
+    circuit_breakers = get_all_circuit_breaker_stats()
+
+    # Format circuit breaker info
+    cb_info = {}
+    for name, stats in circuit_breakers.items():
+        cb_info[name] = {
+            "state": stats.state.value,
+            "consecutive_failures": stats.consecutive_failures,
+            "total_calls": stats.total_calls,
+            "total_failures": stats.total_failures,
+            "total_successes": stats.total_successes,
+        }
 
     return {
         "concurrency": {
@@ -353,4 +370,12 @@ async def get_audit_stats(
             "stats": concurrency_stats.queue_stats,
         },
         "browser_pool": browser_stats,
+        "cache": {
+            "entries": cache_stats["valid_entries"],
+            "hit_rate_percent": cache_stats["metrics"]["hit_rate_percent"],
+            "hits": cache_stats["metrics"]["hits"],
+            "misses": cache_stats["metrics"]["misses"],
+            "active_url_locks": cache_stats["url_locking"]["active_locks"],
+        },
+        "circuit_breakers": cb_info,
     }

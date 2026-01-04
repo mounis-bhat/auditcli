@@ -14,6 +14,7 @@ from app.config.settings import get_config
 from app.errors.exceptions import APIError
 from app.schemas.audit import CrUXData, CrUXMetric, MetricDistribution
 from app.schemas.common import Rating
+from app.services.circuit_breaker import get_psi_circuit_breaker, CircuitState
 
 PSI_API_URL = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
 
@@ -147,8 +148,15 @@ async def fetch_crux_async(url: str, timeout: float = 60.0) -> Optional[CrUXData
     """
     Async version of fetch_crux - fetches CrUX field data from PageSpeed Insights API.
 
-    Returns None if no field data available, raises APIError on API failures.
+    Returns None if no field data available or circuit is open.
+    Raises APIError on API failures (which triggers retry).
     """
+    # Check circuit breaker before making request
+    circuit_breaker = get_psi_circuit_breaker()
+    if not circuit_breaker.can_execute():
+        # Circuit is open, fail fast
+        return None
+
     config = get_config()
 
     params: Dict[str, str] = {
@@ -163,13 +171,21 @@ async def fetch_crux_async(url: str, timeout: float = 60.0) -> Optional[CrUXData
             response = await client.get(PSI_API_URL, params=params)
             response.raise_for_status()
             data = response.json()
+
+        # Record success
+        circuit_breaker.record_success()
+
     except httpx.TimeoutException as e:
+        circuit_breaker.record_failure()
         raise APIError(f"PSI API request timed out: {e}") from e
     except httpx.HTTPStatusError as e:
+        circuit_breaker.record_failure()
         raise APIError(f"PSI API returned error status {e.response.status_code}") from e
     except httpx.RequestError as e:
+        circuit_breaker.record_failure()
         raise APIError(f"Failed to connect to PSI API: {e}") from e
     except Exception as e:
+        circuit_breaker.record_failure()
         raise APIError(f"Failed to fetch CrUX data: {e}") from e
 
     # Get loading experience data
@@ -205,8 +221,15 @@ def fetch_crux(url: str, timeout: float = 60.0) -> Optional[CrUXData]:
     """
     Fetch CrUX field data from PageSpeed Insights API.
 
-    Returns None if no field data available, raises APIError on API failures.
+    Returns None if no field data available or circuit is open.
+    Raises APIError on API failures (which triggers retry).
     """
+    # Check circuit breaker before making request
+    circuit_breaker = get_psi_circuit_breaker()
+    if not circuit_breaker.can_execute():
+        # Circuit is open, fail fast
+        return None
+
     config = get_config()
 
     params: Dict[str, str] = {
@@ -221,13 +244,21 @@ def fetch_crux(url: str, timeout: float = 60.0) -> Optional[CrUXData]:
             response = client.get(PSI_API_URL, params=params)
             response.raise_for_status()
             data = response.json()
+
+        # Record success
+        circuit_breaker.record_success()
+
     except httpx.TimeoutException as e:
+        circuit_breaker.record_failure()
         raise APIError(f"PSI API request timed out: {e}") from e
     except httpx.HTTPStatusError as e:
+        circuit_breaker.record_failure()
         raise APIError(f"PSI API returned error status {e.response.status_code}") from e
     except httpx.RequestError as e:
+        circuit_breaker.record_failure()
         raise APIError(f"Failed to connect to PSI API: {e}") from e
     except Exception as e:
+        circuit_breaker.record_failure()
         raise APIError(f"Failed to fetch CrUX data: {e}") from e
 
     # Get loading experience data

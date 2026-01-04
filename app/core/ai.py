@@ -19,6 +19,7 @@ from app.schemas.audit import (
     CrUXData,
     LighthouseReport,
 )
+from app.services.circuit_breaker import get_ai_circuit_breaker
 
 SYSTEM_PROMPT = """
 You are a senior web performance consultant writing a comprehensive website audit report for business stakeholders and technical teams.
@@ -138,8 +139,16 @@ def generate_ai_report(
 ) -> Optional[AIReport]:
     """
     Generate AI analysis report using Gemini.
-    Returns None if generation fails gracefully, raises APIError on API failures.
+
+    Returns None if circuit is open or generation fails gracefully.
+    Raises APIError on API failures (which triggers retry).
     """
+    # Check circuit breaker before making request
+    circuit_breaker = get_ai_circuit_breaker()
+    if not circuit_breaker.can_execute():
+        # Circuit is open, fail fast
+        return None
+
     config = get_config()
     api_key = config.google_api_key
 
@@ -163,12 +172,19 @@ def generate_ai_report(
         )
 
         if not response.text:
+            circuit_breaker.record_failure()
             raise APIError("AI API returned empty response")
 
         parsed = json.loads(response.text)
+
+        # Record success
+        circuit_breaker.record_success()
+
         return AIReport.model_validate(parsed)
 
     except APIError:
+        circuit_breaker.record_failure()
         raise
     except Exception as e:
+        circuit_breaker.record_failure()
         raise APIError(f"Failed to generate AI report: {str(e)}") from e
