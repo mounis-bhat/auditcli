@@ -9,16 +9,26 @@ A robust, production-ready FastAPI web service that runs comprehensive web audit
 git clone <repo-url>
 cd auditcli
 
-# Install dependencies with uv
+# Install Python dependencies with uv
 uv sync
+
+# Install Playwright browsers (REQUIRED - Chromium for Lighthouse)
+# Option 1: Run the postinstall script (recommended)
+uv run auditcli-postinstall
+
+# Option 2: Install manually
+playwright install chromium
+
+# Install Lighthouse CLI globally
+npm install -g lighthouse
 ```
 
 ## Requirements
 
 - Python 3.13+
 - [uv](https://github.com/astral-sh/uv) package manager
-- Google Chrome (for Lighthouse)
-- Lighthouse CLI (`npm install -g lighthouse`)
+- **Playwright Chromium browser** (`playwright install chromium`) - **validated on startup**
+- **Lighthouse CLI** (`npm install -g lighthouse`) - **validated on startup**
 - Google Gemini API key (for AI insights) - **validated on startup**
 - Google PageSpeed Insights API key (for CrUX field data) - **validated on startup**
 
@@ -56,10 +66,14 @@ BROWSER_IDLE_TIMEOUT=300             # Idle browser cleanup timeout in seconds (
 
 ## Quick Start
 
-1. **Install dependencies**: `uv sync`
-2. **Set up API keys** in `.env` file
-3. **Start the server**: `uv run uvicorn app.main:app --reload`
-4. **Test the API**: `curl -X POST http://localhost:8000/v1/audit -H "Content-Type: application/json" -d '{"url": "https://example.com"}'`
+1. **Install Python dependencies**: `uv sync`
+2. **Install Playwright browsers**: `uv run auditcli-postinstall` (or `playwright install chromium`)
+3. **Install Lighthouse CLI**: `npm install -g lighthouse`
+4. **Set up API keys** in `.env` file (see below)
+5. **Start the server**: `uv run uvicorn app.main:app --reload`
+6. **Test the API**: `curl -X POST http://localhost:8000/v1/audit -H "Content-Type: application/json" -d '{"url": "https://example.com"}'`
+
+**Note:** `uv` does not automatically run post-install scripts. You must manually run `uv run auditcli-postinstall` after `uv sync` to install Playwright browsers.
 
 ## API Usage
 
@@ -362,6 +376,81 @@ curl http://localhost:8000/v1/audits/stats
 # View API documentation
 open http://localhost:8000/docs  # FastAPI auto-generated docs
 ```
+
+## Troubleshooting
+
+### Playwright Browser Not Installed
+
+**Error:**
+```
+PlaywrightBrowsersNotInstalledError: Playwright browsers not installed
+```
+
+**Solution:**
+```bash
+# Install Chromium browser for Playwright
+playwright install chromium
+
+# Or install via Python module
+python -m playwright install chromium
+```
+
+**Why this happens:**
+- The `playwright` Python package is just a wrapper
+- Browser binaries must be installed separately
+- This is a one-time setup step after installing dependencies
+
+### Lighthouse CLI Not Found
+
+**Error:**
+```
+LighthouseNotFoundError: Lighthouse CLI not found in PATH
+```
+
+**Solution:**
+```bash
+# Install Lighthouse globally via npm
+npm install -g lighthouse
+
+# Verify installation
+lighthouse --version
+```
+
+### API Key Validation Errors
+
+**Error:**
+```
+API keys not configured correctly
+```
+
+**Solution:**
+1. Create `.env` file in project root
+2. Add required API keys:
+   ```env
+   GOOGLE_API_KEY=your_gemini_key_here
+   PSI_API_KEY=your_psi_key_here
+   ```
+3. Get keys from:
+   - [Google AI Studio](https://aistudio.google.com/app/apikey) (Gemini)
+   - [Google Cloud Console](https://developers.google.com/speed/docs/insights/v5/get-started) (PSI)
+
+### Health Check Endpoint
+
+Use the `/v1/health` endpoint to diagnose issues:
+
+```bash
+curl http://localhost:8000/v1/health | jq
+```
+
+This returns detailed status for:
+- Database connectivity
+- Lighthouse CLI availability
+- Playwright browser installation
+- Browser pool status
+- Cache statistics
+- Circuit breaker states
+
+If the service is unhealthy, the response will include specific error messages and installation instructions.
 
 ## License
 

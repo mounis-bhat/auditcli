@@ -23,3 +23,9 @@ class LighthouseNotFoundError(AuditError):
     """Raised when Lighthouse CLI is not found in PATH."""
 
     pass
+
+
+class PlaywrightBrowsersNotInstalledError(AuditError):
+    """Raised when Playwright browser binaries are not installed."""
+
+    pass

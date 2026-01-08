@@ -4,17 +4,49 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 
 from playwright.async_api import Browser, Playwright, async_playwright
 
 from app.config.settings import get_config
+from app.errors.exceptions import PlaywrightBrowsersNotInstalledError
 
 logger = logging.getLogger(__name__)
+
+
+def _check_playwright_browsers_available() -> None:
+    """
+    Check if Playwright Chromium browser is installed.
+
+    Raises:
+        PlaywrightBrowsersNotInstalledError: If Chromium browser is not installed.
+    """
+    # Playwright stores browsers in different locations depending on OS
+    # Default: ~/.cache/ms-playwright on Linux/macOS, %USERPROFILE%\AppData\Local\ms-playwright on Windows
+    playwright_cache = Path.home() / ".cache" / "ms-playwright"
+    if sys.platform == "win32":
+        playwright_cache = Path.home() / "AppData" / "Local" / "ms-playwright"
+
+    # Check if any chromium installation exists
+    if not playwright_cache.exists():
+        raise PlaywrightBrowsersNotInstalledError(
+            "Playwright browsers not installed. Run: playwright install chromium"
+        )
+
+    # Look for chromium installation (can be chromium-* or chromium_headless_shell-*)
+    chromium_dirs = list(playwright_cache.glob("chromium*"))
+    if not chromium_dirs:
+        raise PlaywrightBrowsersNotInstalledError(
+            "Playwright Chromium not installed. Run: playwright install chromium"
+        )
+
+    logger.info(f"Playwright Chromium found at: {chromium_dirs[0]}")
 
 
 @dataclass
@@ -94,6 +126,9 @@ class BrowserPool:
         async with self._pool_lock:
             if self._initialized:
                 return
+
+            # Validate Playwright browsers are installed before starting
+            _check_playwright_browsers_available()
 
             self._playwright = await async_playwright().start()
             self._semaphore = asyncio.Semaphore(self.pool_size)

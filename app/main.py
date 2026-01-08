@@ -15,7 +15,9 @@ from scalar_fastapi import (
 )
 
 from app.api.v1 import router as v1_router
-from app.services.browser_pool import BrowserPool
+from app.core.lighthouse import _check_lighthouse_available
+from app.errors.exceptions import LighthouseNotFoundError, PlaywrightBrowsersNotInstalledError
+from app.services.browser_pool import BrowserPool, _check_playwright_browsers_available
 from app.services.concurrency import ConcurrencyManager
 
 # Configure logging
@@ -48,6 +50,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     Handles startup and shutdown of browser pool and concurrency manager.
     """
     logger.info("Starting up Web Audit API...")
+
+    # Validate dependencies before starting
+    logger.info("Validating dependencies...")
+    try:
+        _check_lighthouse_available()
+        logger.info("✓ Lighthouse CLI found")
+    except LighthouseNotFoundError as e:
+        logger.error(f"✗ Lighthouse validation failed: {e}")
+        logger.error("Install with: npm install -g lighthouse")
+        raise
+
+    try:
+        _check_playwright_browsers_available()
+        logger.info("✓ Playwright Chromium found")
+    except PlaywrightBrowsersNotInstalledError as e:
+        logger.error(f"✗ Playwright browsers validation failed: {e}")
+        logger.error("Install with: playwright install chromium")
+        raise
+
+    logger.info("All dependencies validated successfully")
 
     # Initialize concurrency manager (this also initializes the queue)
     concurrency_manager = ConcurrencyManager.get_instance()

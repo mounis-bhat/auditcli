@@ -11,9 +11,10 @@ def main() -> int:
     print("This may take a few minutes on first run.")
 
     try:
-        # Install all Playwright browsers to ensure compatibility
+        # Install only Chromium (the only browser needed for Lighthouse)
+        # This saves ~140MB disk space and installation time vs installing all browsers
         _result = subprocess.run(
-            [sys.executable, "-m", "playwright", "install"],
+            [sys.executable, "-m", "playwright", "install", "chromium"],
             check=True,
             capture_output=False,
         )
