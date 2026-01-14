@@ -20,7 +20,7 @@ from app.errors.exceptions import PlaywrightBrowsersNotInstalledError
 logger = logging.getLogger(__name__)
 
 
-def _check_playwright_browsers_available() -> None:
+def check_playwright_browsers_available() -> None:
     """
     Check if Playwright Chromium browser is installed.
 
@@ -128,7 +128,7 @@ class BrowserPool:
                 return
 
             # Validate Playwright browsers are installed before starting
-            _check_playwright_browsers_available()
+            check_playwright_browsers_available()
 
             self._playwright = await async_playwright().start()
             self._semaphore = asyncio.Semaphore(self.pool_size)

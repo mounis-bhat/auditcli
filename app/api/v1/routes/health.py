@@ -1,14 +1,23 @@
 """Health check endpoints with database connectivity verification."""
 
-from typing import Any
+from typing import Any, TypedDict
 
 from fastapi import APIRouter
 
-from app.core.lighthouse import _check_lighthouse_available
+from app.core.lighthouse import check_lighthouse_available
 from app.errors.exceptions import LighthouseNotFoundError, PlaywrightBrowsersNotInstalledError
-from app.services.browser_pool import BrowserPool, _check_playwright_browsers_available
+from app.services.browser_pool import BrowserPool, check_playwright_browsers_available
 from app.services.cache import check_database_connection, get_cache_stats
 from app.services.circuit_breaker import get_all_circuit_breaker_stats
+
+
+class DependencyStatus(TypedDict):
+    """Type for dependency status dictionaries."""
+
+    status: str
+    available: bool
+    error: str | None
+
 
 router = APIRouter()
 
@@ -43,15 +52,15 @@ async def health_check() -> dict[str, Any]:
         }
 
     # Check dependencies
-    lighthouse_status = {"status": "healthy", "available": True, "error": None}
+    lighthouse_status: DependencyStatus = {"status": "healthy", "available": True, "error": None}
     try:
-        _check_lighthouse_available()
+        check_lighthouse_available()
     except LighthouseNotFoundError as e:
         lighthouse_status = {"status": "unhealthy", "available": False, "error": str(e)}
 
-    playwright_status = {"status": "healthy", "available": True, "error": None}
+    playwright_status: DependencyStatus = {"status": "healthy", "available": True, "error": None}
     try:
-        _check_playwright_browsers_available()
+        check_playwright_browsers_available()
     except PlaywrightBrowsersNotInstalledError as e:
         playwright_status = {"status": "unhealthy", "available": False, "error": str(e)}
 
@@ -60,9 +69,9 @@ async def health_check() -> dict[str, Any]:
     browser_pool_stats = browser_pool.get_stats() if browser_pool.is_initialized else None
 
     # Determine overall health and readiness
-    dependencies_healthy = lighthouse_status["available"] and playwright_status["available"]
-    is_healthy = db_status["connected"] and dependencies_healthy
-    is_ready = db_status["connected"] and dependencies_healthy
+    dependencies_healthy: bool = lighthouse_status["available"] and playwright_status["available"]
+    is_healthy: bool = db_status["connected"] and dependencies_healthy
+    is_ready: bool = db_status["connected"] and dependencies_healthy
 
     # Check if any circuit breakers are open (degraded state)
     circuits_open = any(stats.state.value == "open" for stats in circuit_breakers.values())
@@ -71,7 +80,7 @@ async def health_check() -> dict[str, Any]:
     if not is_ready:
         from fastapi import HTTPException
 
-        reasons = []
+        reasons: list[str] = []
         if not db_status["connected"]:
             reasons.append(f"Database not connected: {db_status['error']}")
         if not lighthouse_status["available"]:

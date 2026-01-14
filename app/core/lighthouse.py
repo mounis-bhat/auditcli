@@ -85,7 +85,7 @@ def _extract_metrics(lh_json: dict[str, Any]) -> LighthouseMetrics:
     )
 
 
-def _check_lighthouse_available() -> None:
+def check_lighthouse_available() -> None:
     """
     Check if Lighthouse CLI is available in PATH.
 
@@ -238,7 +238,7 @@ async def run_lighthouse_parallel(  # noqa: ASYNC109, C901
         LighthouseNotFoundError: If lighthouse CLI is not installed
         AuditError: If both mobile and desktop audits fail
     """
-    _check_lighthouse_available()
+    check_lighthouse_available()
 
     # Allocate timeout between mobile and desktop (running in parallel, but use same timeout)
     single_audit_timeout = timeout / 2.0
@@ -371,7 +371,7 @@ def run_lighthouse_single(url: str, strategy: str, timeout: float = 300.0) -> Li
         AuditError: If the audit fails.
     """
     # Check lighthouse is available before starting
-    _check_lighthouse_available()
+    check_lighthouse_available()
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
@@ -415,7 +415,7 @@ def run_lighthouse(url: str, timeout: float = 600.0) -> LighthouseReport:  # noq
         AuditError: If both mobile and desktop audits fail.
     """
     # Check lighthouse is available before starting
-    _check_lighthouse_available()
+    check_lighthouse_available()
 
     mobile_metrics: LighthouseMetrics | None = None
     desktop_metrics: LighthouseMetrics | None = None
