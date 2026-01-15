@@ -37,7 +37,7 @@ wheels = [
 ]
 
 [[package]]
-name = "auditcli"
+name = "auditor"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

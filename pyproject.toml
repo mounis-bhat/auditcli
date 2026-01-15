@@ -1,5 +1,5 @@
 [project]
-name = "auditcli"
+name = "auditor"
 version = "0.1.0"
 description = "Web audit API - FastAPI service with Lighthouse, CrUX, and AI insights"
 readme = "README.md"
@@ -24,7 +24,7 @@ build-backend = "hatchling.build"
 packages = ["app"]
 
 [project.scripts]
-auditcli-postinstall = "scripts.postinstall:main"
+auditor-postinstall = "scripts.postinstall:main"
 
 [tool.uv]
 package = true

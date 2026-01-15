@@ -1,4 +1,4 @@
-# AuditCLI
+# Auditor
 
 A robust, production-ready FastAPI web service that runs comprehensive web audits using Lighthouse, fetches real-world performance data from CrUX, and generates AI-powered insights. Features automatic caching, comprehensive input validation, graceful error handling, configurable timeouts, and detailed performance profiling. Returns everything as structured JSON for easy integration with CI/CD pipelines and monitoring systems.
 
@@ -7,14 +7,14 @@ A robust, production-ready FastAPI web service that runs comprehensive web audit
 ```bash
 # Clone the repository
 git clone <repo-url>
-cd auditcli
+cd auditor
 
 # Install Python dependencies with uv
 uv sync
 
 # Install Playwright browsers (REQUIRED - Chromium for Lighthouse)
 # Option 1: Run the postinstall script (recommended)
-uv run auditcli-postinstall
+uv run auditor-postinstall
 
 # Option 2: Install manually
 playwright install chromium
@@ -67,13 +67,13 @@ BROWSER_IDLE_TIMEOUT=300             # Idle browser cleanup timeout in seconds (
 ## Quick Start
 
 1. **Install Python dependencies**: `uv sync`
-2. **Install Playwright browsers**: `uv run auditcli-postinstall` (or `playwright install chromium`)
+2. **Install Playwright browsers**: `uv run auditor-postinstall` (or `playwright install chromium`)
 3. **Install Lighthouse CLI**: `npm install -g lighthouse`
 4. **Set up API keys** in `.env` file (see below)
 5. **Start the server**: `uv run uvicorn app.main:app --reload`
 6. **Test the API**: `curl -X POST http://localhost:8000/v1/audit -H "Content-Type: application/json" -d '{"url": "https://example.com"}'`
 
-**Note:** `uv` does not automatically run post-install scripts. You must manually run `uv run auditcli-postinstall` after `uv sync` to install Playwright browsers.
+**Note:** `uv` does not automatically run post-install scripts. You must manually run `uv run auditor-postinstall` after `uv sync` to install Playwright browsers.
 
 ## API Usage
 

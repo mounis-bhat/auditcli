@@ -1,4 +1,4 @@
-"""Pytest fixtures for auditcli tests."""
+"""Pytest fixtures for auditor tests."""
 
 import os
 from collections.abc import Generator

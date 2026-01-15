@@ -49,7 +49,7 @@ def _get_optional_env(key: str, default: str) -> str:
 
 def _get_default_cache_path() -> Path:
     """Get default cache path in user's cache directory."""
-    cache_dir = Path.home() / ".cache" / "auditcli"
+    cache_dir = Path.home() / ".cache" / "auditor"
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / "audit_cache.db"
 
